@@ -951,6 +951,97 @@ func TestEnsureBucketNormalisesStorageClass(t *testing.T) {
 	}
 }
 
+// TestBuildRejectsUnparseableDurations covers the conversion errors. Config
+// validation normally catches these first, so these paths are only reachable by
+// calling the builders directly — which is exactly why they are easy to break.
+func TestBuildRejectsUnparseableDurations(t *testing.T) {
+	subTests := []struct {
+		name string
+		sub  config.Subscription
+	}{
+		{"ack deadline", config.Subscription{Name: "s", AckDeadline: "soon"}},
+		{"message retention", config.Subscription{Name: "s", MessageRetention: "a while"}},
+		{"expiration ttl", config.Subscription{Name: "s", ExpirationTTL: "eventually"}},
+		{"retry minimum backoff", config.Subscription{Name: "s", Retry: &config.Retry{MinimumBackoff: "soon"}}},
+		{"retry maximum backoff", config.Subscription{Name: "s", Retry: &config.Retry{MaximumBackoff: "later"}}},
+	}
+
+	for _, tt := range subTests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := buildSubscription("orders", tt.sub); err == nil {
+				t.Errorf("buildSubscription accepted %q", tt.name)
+			}
+		})
+	}
+
+	if _, err := buildTopic(config.Topic{Name: "orders", MessageRetention: "ages"}); err == nil {
+		t.Error("buildTopic accepted an unparseable retention")
+	}
+}
+
+func TestEqualityHelpersHandleNil(t *testing.T) {
+	dl := &client.DeadLetterPolicy{Topic: "dlq", MaxDeliveryAttempts: 5}
+	if deadLetterEqual(nil, dl) {
+		t.Error("a missing live dead letter policy is drift")
+	}
+	if !deadLetterEqual(nil, nil) {
+		t.Error("two absent dead letter policies are equal")
+	}
+
+	retry := &client.RetryPolicy{MinimumBackoff: time.Second}
+	if retryEqual(nil, retry) {
+		t.Error("a missing live retry policy is drift")
+	}
+	if !retryEqual(nil, nil) {
+		t.Error("two absent retry policies are equal")
+	}
+
+	// A pull subscription reports no push config at all; wanting one is drift.
+	if pushConfigEqual(nil, &client.PushConfig{Endpoint: "http://consumer:8080"}) {
+		t.Error("a missing live push config is drift")
+	}
+	// An omitted OIDC token leaves whatever the subscription has.
+	if !oidcEqual(&client.OIDCToken{ServiceAccountEmail: "a@b.c"}, nil) {
+		t.Error("an omitted oidc token must not be drift")
+	}
+	if oidcEqual(nil, &client.OIDCToken{ServiceAccountEmail: "a@b.c"}) {
+		t.Error("a configured oidc token against none live is drift")
+	}
+	if effectiveWrapper(client.WrapperUnset) != client.WrapperPubSub {
+		t.Error("an unset live wrapper must read as the Pub/Sub default")
+	}
+	if effectiveWrapper(client.WrapperNone) != client.WrapperNone {
+		t.Error("an explicit live wrapper must be preserved")
+	}
+}
+
+func TestAnnotateVersioningErrorLeavesOtherErrorsAlone(t *testing.T) {
+	other := errors.New("connection refused")
+	if got := annotateVersioningError(other, true); !errors.Is(got, other) {
+		t.Errorf("unrelated errors must pass through unchanged, got %v", got)
+	}
+	// The annotation only applies when versioning was actually requested.
+	fsErr := errors.New("does not support versioning")
+	if got := annotateVersioningError(fsErr, false); strings.Contains(got.Error(), "-backend memory") {
+		t.Error("the hint must not be added when versioning was not requested")
+	}
+}
+
+func TestRunPropagatesSectionErrors(t *testing.T) {
+	ps := newMockPubSub()
+	ps.topics["orders"] = &client.Topic{Name: "orders"}
+	ps.updateTopicErr = errors.New("permission denied")
+
+	cfg := &config.Config{PubSub: config.PubSub{Topics: []config.Topic{
+		{Name: "orders", MessageRetention: "24h"},
+	}}}
+
+	p := New(ps, newMockStorage(), cfg, DefaultOptions())
+	if err := p.Run(context.Background()); err == nil {
+		t.Fatal("Run must propagate a failure from the Pub/Sub section")
+	}
+}
+
 func TestSectionsSkipWhenNotConfigured(t *testing.T) {
 	// A config with no buckets must not touch the (nil) storage client.
 	cfg := &config.Config{PubSub: config.PubSub{Topics: []config.Topic{{Name: "orders"}}}}

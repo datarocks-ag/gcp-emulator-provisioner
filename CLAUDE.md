@@ -41,9 +41,17 @@ go test -race -run TestEnsureTopic ./internal/provisioner/        # single test
   `go test ./...` skips them
 - **CI lints without the integration tag**, so `go tool golangci-lint run` alone will not check
   `integration_test.go`. Use `--build-tags=integration` when touching it
-- Coverage gate: 60% total (`.testcoverage.yml`), enforced in CI. It currently sits just above
-  that — the `client` package's connect and CRUD paths are only reachable from integration tests,
-  which the gate does not count
+- Coverage gate: **two of them**, and the stricter one decides. `ci.yaml` runs
+  `vladopajic/go-test-coverage` twice — once with `config: ./.testcoverage.yml` (`total: 60`) and
+  again in the badge step with a hardcoded `threshold-total: 75`. A run at, say, 70% passes the
+  first and fails the second. Change both together or they drift apart
+- The `client` package talks to a live endpoint, so its connect and CRUD paths look
+  integration-only — but the gate does not count integration tests. They are covered instead by
+  in-process fakes in `internal/client`: `httptest` for the Cloud Storage JSON API
+  (`storage_test.go`) and a real gRPC server implementing `PublisherServer` / `SubscriberServer`
+  (`pubsub_server_test.go`). Both mirror emulator behaviour deliberately — fabricated
+  `US-CENTRAL1`/`STANDARD`, and a mask validated in full before anything is applied. Extend the
+  fakes rather than dropping back to integration-only coverage
 - The Pub/Sub emulator image is **amd64-only**. On an arm64 host each integration test spends
   ~15s booting it under emulation; the full Pub/Sub suite takes around 80s
 
