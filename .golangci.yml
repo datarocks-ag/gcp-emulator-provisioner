@@ -1,0 +1,19 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+
+  settings:
+    errcheck:
+      exclude-functions:
+        - (io.Closer).Close
+        - os.Unsetenv
+
+issues:
+  exclude-dirs:
+    - vendor

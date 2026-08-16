@@ -1,0 +1,100 @@
+# Strategy: "update" (default) creates or updates resources.
+#           "create" only creates if missing, skips existing.
+# Set globally or per topic / subscription / bucket (the resource wins).
+# strategy: "update"
+
+# Every resource is created under this project. GCP_PROJECT_ID overrides it.
+project_id: local-dev
+
+pubsub:
+  topics:
+    - name: orders
+      labels:
+        domain: commerce
+      # How long the topic itself retains messages, so a new subscription can
+      # seek back into the past. Omit to leave retention to the subscriptions.
+      message_retention: 24h
+
+      subscriptions:
+        - name: order-processor
+          # 10s-600s, and a whole number of seconds: Pub/Sub stores this as
+          # ack_deadline_seconds, so a fractional value would be truncated and
+          # then reported as drift on every subsequent run.
+          ack_deadline: 30s
+          # 10m-31d.
+          message_retention: 7d
+          enable_exactly_once_delivery: true
+          labels:
+            team: platform
+          # Undeliverable messages land here after max_delivery_attempts tries.
+          # The dead letter topic must itself be declared under `topics`.
+          dead_letter:
+            topic: orders-dlq
+            max_delivery_attempts: 5
+          retry:
+            minimum_backoff: 10s
+            maximum_backoff: 600s
+
+        # Pub/Sub fixes `filter` and `enable_message_ordering` at creation.
+        # Changing either later is reported as a warning and left unapplied —
+        # the subscription has to be deleted by hand to take a new value.
+        - name: order-audit
+          ack_deadline: 60s
+          filter: 'attributes.type = "order.created"'
+          enable_message_ordering: true
+          # "never" stops Pub/Sub from garbage collecting an idle subscription,
+          # which is what you usually want for a local stack left running.
+          expiration_ttl: never
+
+        # A push subscription delivers over HTTP instead of being pulled.
+        - name: order-webhook
+          ack_deadline: 10s
+          push_endpoint: http://consumer:8080/events
+          push_attributes:
+            x-goog-version: v1
+          # Pub/Sub authenticates to the endpoint with an OIDC token it mints
+          # for this service account. Neither emulator validates the account,
+          # so locally the field is inert.
+          push_oidc_token:
+            service_account_email: ${PUSH_SERVICE_ACCOUNT}
+            # Defaults to the push endpoint URL when omitted.
+            audience: http://consumer:8080
+          # "pubsub" (the default) wraps the message in an envelope; "none"
+          # posts the raw payload. Omit to leave the current wrapper alone.
+          push_wrapper: none
+          # Copies the message metadata into X-Goog-Pubsub-* headers.
+          # Only valid with push_wrapper: none.
+          push_write_metadata: true
+
+    - name: orders-dlq
+      message_retention: 7d
+
+    - name: user-events
+      subscriptions:
+        - name: user-projector
+          ack_deadline: 30s
+          retain_acked_messages: true
+          message_retention: 3d
+
+storage:
+  buckets:
+    - name: documents
+      # Omit `versioning` entirely to leave the bucket's current setting alone;
+      # setting it to false actively suspends versioning.
+      #
+      # fake-gcs-server only implements versioning on its in-memory backend
+      # (-backend memory). On the default filesystem backend this field makes
+      # the run fail with a message saying so.
+      versioning: true
+
+    - name: media-assets
+      # Location and storage class are applied at creation and never
+      # reconciled — Cloud Storage cannot move a bucket. Against real Cloud
+      # Storage a difference is reported as a warning; against an emulator the
+      # check is off, because fake-gcs-server reports US-CENTRAL1 and STANDARD
+      # for every bucket regardless of what it was created with.
+      location: EU
+      storage_class: STANDARD
+
+    - name: backups
+      strategy: "create"

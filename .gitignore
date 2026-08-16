@@ -1,0 +1,16 @@
+# Binary
+/gcp-emulator-provisioner
+
+# IDE
+.idea/
+
+# Local agent/tooling state
+.claude/
+
+# OS
+.DS_Store
+
+# Test
+*.test
+coverage.out
+cover.out
