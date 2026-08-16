@@ -1,11 +1,87 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"gcp-emulator-provisioner/internal/config"
+	"gcp-emulator-provisioner/internal/provisioner"
 )
+
+// writeConfig writes a config file and points GCP_CONFIG_PATH at it.
+func writeConfig(t *testing.T, contents string) {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+	t.Setenv("GCP_CONFIG_PATH", path)
+}
+
+// TestRunWithNothingConfigured covers the whole run() path without a network:
+// a config declaring no resources skips both sections, so neither client is
+// ever constructed.
+func TestRunWithNothingConfigured(t *testing.T) {
+	writeConfig(t, "project_id: local-dev\n")
+	t.Setenv("GCP_PROJECT_ID", "")
+
+	for _, section := range []string{sectionAll, sectionPubSub, sectionStorage} {
+		t.Run(section, func(t *testing.T) {
+			if err := run(context.Background(), section, provisioner.DefaultOptions()); err != nil {
+				t.Errorf("run(%q) = %v, want nil", section, err)
+			}
+		})
+	}
+}
+
+func TestRunReportsAMissingConfigFile(t *testing.T) {
+	t.Setenv("GCP_CONFIG_PATH", filepath.Join(t.TempDir(), "does-not-exist.yaml"))
+
+	err := run(context.Background(), sectionAll, provisioner.DefaultOptions())
+	if err == nil {
+		t.Fatal("expected a missing config file to fail the run")
+	}
+	if !strings.Contains(err.Error(), "loading configuration") {
+		t.Errorf("error = %v, want it to name the config load", err)
+	}
+}
+
+func TestRunRequiresAProjectID(t *testing.T) {
+	writeConfig(t, "pubsub:\n  topics:\n    - name: orders\n")
+	t.Setenv("GCP_PROJECT_ID", "")
+
+	err := run(context.Background(), sectionAll, provisioner.DefaultOptions())
+	if err == nil {
+		t.Fatal("expected a missing project id to fail the run")
+	}
+	if !strings.Contains(err.Error(), "project id is required") {
+		t.Errorf("error = %v, want it to name the missing project id", err)
+	}
+}
+
+func TestSetupLogging(t *testing.T) {
+	// Every level, plus an unrecognised value that must fall back rather than fail.
+	for _, level := range []string{"debug", "info", "warn", "error", "nonsense", ""} {
+		t.Setenv("LOG_LEVEL", level)
+		setupLogging()
+	}
+}
+
+type failingCloser struct{ err error }
+
+func (f failingCloser) Close() error { return f.err }
+
+func TestCloseAndLogSwallowsFailures(t *testing.T) {
+	// Provisioning has already finished by the time this runs, so a close
+	// failure must not change the outcome.
+	closeAndLog("Pub/Sub", failingCloser{err: errors.New("connection reset")})
+	closeAndLog("Pub/Sub", failingCloser{})
+}
 
 func TestResolveDryRun(t *testing.T) {
 	tests := []struct {
