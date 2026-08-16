@@ -1,0 +1,61 @@
+services:
+  # The gcloud Pub/Sub emulator. The image is published for amd64 only, so on an
+  # arm64 host it runs under emulation and takes appreciably longer to start —
+  # hence the generous healthcheck budget.
+  pubsub:
+    image: gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
+    command: >
+      gcloud beta emulators pubsub start
+      --host-port=0.0.0.0:8085
+      --project=local-dev
+    ports:
+      - "8085:8085"
+    healthcheck:
+      # The emulator speaks gRPC but also answers a plain HTTP GET on /, which is
+      # enough to prove the listener is up without adding a probe binary.
+      test: ["CMD-SHELL", "curl -sf -o /dev/null http://localhost:8085/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
+
+  # fake-gcs-server on its in-memory backend. The default filesystem backend does
+  # not implement object versioning, and a bucket configured with `versioning:
+  # true` fails against it.
+  gcs:
+    image: fsouza/fake-gcs-server:latest
+    command: ["-scheme", "http", "-host", "0.0.0.0", "-port", "4443", "-backend", "memory", "-public-host", "gcs:4443"]
+    ports:
+      - "4443:4443"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:4443/storage/v1/b?project=local-dev || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  gcp-emulator-provisioner:
+    image: ghcr.io/datarocks-ag/gcp-emulator-provisioner:latest
+    depends_on:
+      pubsub: { condition: service_healthy }
+      gcs: { condition: service_healthy }
+    environment:
+      GCP_PROJECT_ID: local-dev
+      # The variables the Google client libraries already look for, so the
+      # provisioner and the applications read the same setting.
+      PUBSUB_EMULATOR_HOST: pubsub:8085
+      STORAGE_EMULATOR_HOST: gcs:4443
+      GCP_CONFIG_PATH: /config.yaml
+      LOG_LEVEL: info
+    volumes:
+      - ./config.example.yaml:/config.yaml:ro
+
+  # Applications join the same stack and pick up the emulators from the same two
+  # variables, after the provisioner has exited successfully:
+  #
+  #   my-service:
+  #     depends_on:
+  #       gcp-emulator-provisioner:
+  #         condition: service_completed_successfully
+  #     environment:
+  #       PUBSUB_EMULATOR_HOST: pubsub:8085
+  #       STORAGE_EMULATOR_HOST: gcs:4443
