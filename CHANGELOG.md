@@ -45,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   healthchecks. The provisioner remains one-shot; the stub is a separate binary
   with its own lifecycle.
 
+- The release pipeline publishes **two images**:
+  `ghcr.io/datarocks-ag/gcp-emulator-provisioner` and
+  `ghcr.io/datarocks-ag/gcp-token-stub`, each scanned by Trivy before it is
+  pushed. GoReleaser emits a separate archive per binary.
+
 - **`--section=credentials`**, which touches no endpoint and so runs with no
   emulator up. In a full run credentials are written first, because the
   applications that need the key file usually start alongside the provisioner.

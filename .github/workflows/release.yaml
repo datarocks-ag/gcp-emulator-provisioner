@@ -134,12 +134,22 @@ jobs:
           path: gcp-emulator-provisioner
 
   docker:
-    name: Docker
+    # One job per image. The provisioner is the one-shot Job; the token stub is
+    # the long-lived helper that replaces an nginx container in local stacks.
+    name: Docker (${{ matrix.image }})
     runs-on: ubuntu-latest
     needs: [lint, test, test-integration, security]
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: gcp-emulator-provisioner
+            dockerfile: Dockerfile
+          - image: gcp-token-stub
+            dockerfile: Dockerfile.token-stub
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -157,14 +167,15 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           load: true
-          tags: ${{ env.IMAGE_NAME }}:scan
+          tags: ${{ matrix.image }}:scan
           build-args: VERSION=${{ steps.version.outputs.VERSION }}
 
       - name: Run Trivy vulnerability scanner (Docker image)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.IMAGE_NAME }}:scan
+          image-ref: ${{ matrix.image }}:scan
           format: 'table'
           output: 'trivy-docker-results.txt'
           severity: 'CRITICAL,HIGH'
@@ -173,7 +184,7 @@ jobs:
         run: |
           if [[ -s trivy-docker-results.txt ]]; then
             {
-              echo "### Docker Image Security Scan Results"
+              echo "### Docker Image Security Scan Results (${{ matrix.image }})"
               echo "<details><summary>Click to expand</summary>"
               echo ""
               echo '```'
@@ -182,7 +193,7 @@ jobs:
               echo "</details>"
             } >> $GITHUB_STEP_SUMMARY
           else
-            echo "### Docker Image Security Scan Results" >> $GITHUB_STEP_SUMMARY
+            echo "### Docker Image Security Scan Results (${{ matrix.image }})" >> $GITHUB_STEP_SUMMARY
             echo "No CRITICAL or HIGH vulnerabilities found." >> $GITHUB_STEP_SUMMARY
           fi
 
@@ -198,7 +209,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # IMAGE_NAME is the repository, which only names the provisioner, so
+          # the image name comes from the matrix instead.
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -210,13 +223,15 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           push: ${{ github.event_name != 'pull_request' }}
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: VERSION=${{ steps.version.outputs.VERSION }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Scoped per image, or the two matrix legs evict each other's layers.
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
 
   goreleaser:
     name: GoReleaser

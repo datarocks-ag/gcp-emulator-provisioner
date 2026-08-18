@@ -338,8 +338,13 @@ authorization error looks identical to an outage for five minutes.
 
 - `.github/workflows/ci.yaml` — runs on `feature/**`, `bugfix/**`, `hotfix/**`, `release/**`,
   `dependabot/**`: lint, unit tests + coverage badge, integration tests, Trivy scan, build
-- `.github/workflows/release.yaml` — runs on `develop` and `v*` tags: publishes a multi-arch image
-  to `ghcr.io/datarocks-ag/gcp-emulator-provisioner`; GoReleaser runs on tags only
+- `.github/workflows/release.yaml` — runs on `develop` and `v*` tags. The `docker` job is a matrix
+  over the two images, publishing multi-arch to `ghcr.io/datarocks-ag/gcp-emulator-provisioner`
+  and `ghcr.io/datarocks-ag/gcp-token-stub`. Adding a binary means adding a matrix entry *and* a
+  GoReleaser build id — the image name comes from `matrix.image`, not `IMAGE_NAME`, which only
+  ever names the repository. The buildx cache is scoped per image, or the legs evict each other
+- GoReleaser runs on tags only, and emits one archive per binary so a stack that needs only the
+  stub does not download the provisioner as well
 - There is no plain-push CI on `develop`/`main` — work lands on prefixed branches via PR
 - Both emulator images are unpinned in tests and compose, so upstream changes can break CI
   without any local change
