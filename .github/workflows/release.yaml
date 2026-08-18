@@ -128,7 +128,7 @@ jobs:
           CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${VERSION}" -o gcp-emulator-provisioner ./cmd/gcp-emulator-provisioner
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: gcp-emulator-provisioner
           path: gcp-emulator-provisioner
