@@ -45,6 +45,20 @@ services:
     image: ghcr.io/datarocks-ag/gcp-token-stub:latest
     ports:
       - "8099:8099"
+    environment:
+      LOG_LEVEL: info
+      # Everything below is optional and shown at its default.
+      #
+      # Configure the address through the environment rather than --addr: the
+      # healthcheck runs the binary with no flags, so it resolves the port from
+      # TOKEN_STUB_ADDR. Passing --addr in `command` instead would move the
+      # server while leaving the probe checking :8099 — a container that reports
+      # unhealthy while serving perfectly well.
+      TOKEN_STUB_ADDR: ":8099"
+      # The token handed to every caller. Nothing validates it downstream.
+      TOKEN_STUB_ACCESS_TOKEN: local-emulator-token
+      # Lifetime in seconds, echoed back as expires_in.
+      TOKEN_STUB_EXPIRES_IN: "3600"
     healthcheck:
       # The scratch image has no shell, wget or curl, so the binary probes itself.
       test: ["CMD", "/gcp-token-stub", "--ping"]

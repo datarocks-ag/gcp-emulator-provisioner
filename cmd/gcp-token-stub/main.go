@@ -58,7 +58,10 @@ func main() {
 	addrFlag := flag.String("addr", "", "Listen address. Overrides TOKEN_STUB_ADDR (default \":8099\")")
 	tokenFlag := flag.String("token", "", "Access token to hand out. Overrides TOKEN_STUB_ACCESS_TOKEN")
 	ping := flag.Bool("ping", false,
-		"Probe a running stub and exit 0 if it answers. For container healthchecks, since the scratch image has no shell")
+		"Probe a running stub and exit 0 if it answers. For container healthchecks, since the scratch "+
+			"image has no shell. It resolves the address exactly as the server does, so set TOKEN_STUB_ADDR "+
+			"rather than --addr: a probe started without the flag would otherwise check the default port "+
+			"while the server listens elsewhere")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
 

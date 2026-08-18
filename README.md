@@ -23,6 +23,9 @@ neither is set. That dual targeting is deliberate — a config you exercise loca
 is the one you ship — and nothing is supported here that only works against one
 side.
 
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the components fit
+together, with diagrams.
+
 ## Features
 
 - Idempotent provisioning of Pub/Sub topics, subscriptions and Cloud Storage buckets
@@ -165,6 +168,12 @@ itself for container healthchecks:
 healthcheck:
   test: ["CMD", "/gcp-token-stub", "--ping"]
 ```
+
+Configure the address through the **environment** rather than `--addr` when you
+change it. The healthcheck runs the binary with no flags, so it resolves the
+port from `TOKEN_STUB_ADDR`; moving the server with `--addr` alone leaves the
+probe checking `:8099` and the container reports unhealthy while serving
+perfectly well.
 
 | Setting | Flag | Env | Default |
 |---|---|---|---|

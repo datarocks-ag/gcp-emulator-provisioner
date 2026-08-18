@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-08-18
+
+Documentation and dependencies. No change to the provisioner's or the stub's
+behaviour.
+
+### Added
+
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**, describing how the
+  components interact, with diagrams: the local stack topology, the credential
+  and token-exchange sequence, dual targeting, package layering, section
+  ordering, the reconciliation loop, and what deliberately does not exist.
+
+  The stack diagram makes one thing explicit that the Compose file does not: the
+  token stub has no outgoing arrows. It reads no files and holds no state, which
+  is why it does not mount the secrets volume — it never needs the key it hands
+  out tokens for.
+
+- **Dependabot version updates** for Go modules, GitHub Actions and the
+  Dockerfile builder images, on top of the security updates that were already
+  running. Minor and patch updates are grouped into one pull request per
+  ecosystem; majors arrive individually.
+
+  No `target-branch` is set, because specifying it would stop Dependabot raising
+  security updates, and the branch prefix stays at the default because `ci.yaml`
+  triggers on `dependabot/**`.
+
+### Changed
+
+- **The token stub's Compose service now declares its configuration.** It
+  previously set nothing, which hid both the available settings and a trap: the
+  healthcheck runs the binary with no flags, so it resolves the port from
+  `TOKEN_STUB_ADDR`. Moving the server with `--addr` instead leaves the probe
+  checking `:8099`, and the container reports unhealthy while serving perfectly
+  well. All three variables are now shown at their defaults, and the reason is
+  stated in the `--ping` flag help and the README.
+
+- Dependency updates:
+  - `google.golang.org/api` 0.287.1 to 0.293.0
+  - `google.golang.org/grpc` 1.82.1 to 1.83.0
+  - `google.golang.org/protobuf` 1.36.11 to 1.36.12
+  - `golang` builder image 1.25-alpine to 1.26-alpine
+  - `actions/checkout`, `actions/setup-go` and `actions/upload-artifact` 6 to 7,
+    `codecov/codecov-action` 5 to 7, `docker/setup-buildx-action` 3 to 4
+
 ## [2.0.0] - 2026-08-18
 
 Local stacks can now satisfy client libraries that insist on a credential.
@@ -174,6 +218,7 @@ Initial release.
   field drift, the push config oneofs, and the emulator label gap including that
   a refused path does not discard the rest of its batch.
 
-[Unreleased]: https://github.com/datarocks-ag/gcp-emulator-provisioner/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/datarocks-ag/gcp-emulator-provisioner/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/datarocks-ag/gcp-emulator-provisioner/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/datarocks-ag/gcp-emulator-provisioner/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/datarocks-ag/gcp-emulator-provisioner/releases/tag/v1.0.0
