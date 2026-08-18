@@ -135,11 +135,23 @@ func TestWriteEmitsGooglesOnDiskForm(t *testing.T) {
 		t.Error("private key did not survive the round trip")
 	}
 
+	// Pinned to the literal rather than to FileMode, so tightening the constant
+	// has to be a deliberate decision: the key is read by other containers,
+	// usually running as a different UID, and 0600 would deny them at startup.
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatalf("stat: %v", err)
 	}
-	if info.Mode().Perm() != FileMode {
-		t.Errorf("permissions = %v, want %v", info.Mode().Perm(), FileMode)
+	if info.Mode().Perm() != 0o644 {
+		t.Errorf("key permissions = %v, want 0644", info.Mode().Perm())
+	}
+
+	// The parent directory must be traversable for the same reason.
+	dirInfo, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		t.Fatalf("stat dir: %v", err)
+	}
+	if dirInfo.Mode().Perm() != 0o755 {
+		t.Errorf("directory permissions = %v, want 0755", dirInfo.Mode().Perm())
 	}
 }

@@ -46,12 +46,19 @@ const (
 // anything, and 4096 costs noticeably more on every run of a dev stack.
 const keyBits = 2048
 
-// FileMode is the permission a written key file carries. It authenticates
-// nothing, but tools that read service account keys warn on loose permissions.
-const FileMode os.FileMode = 0o600
+// FileMode is the permission a written key file carries.
+//
+// World-readable is deliberate. The key authenticates to nothing, and the file
+// exists to be read by *other* containers — which routinely run as a different
+// UID than whatever wrote it. 0600 would be the reflex for a credential and
+// would break the only thing this file is for, with a permission denied at
+// application startup.
+const FileMode os.FileMode = 0o644
 
 // dirMode is used for parent directories created on the way to the key file.
-const dirMode os.FileMode = 0o700
+// It has to be traversable for the same reason: a 0700 directory would hide the
+// key from another UID however readable the file itself is.
+const dirMode os.FileMode = 0o755
 
 // Key is a Google service account key file, in the field order Google emits.
 type Key struct {
