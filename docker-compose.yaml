@@ -33,6 +33,25 @@ services:
       timeout: 5s
       retries: 20
 
+  # Static OAuth2 token endpoint, replacing what would otherwise be an nginx
+  # container. Some Google client libraries insist on *obtaining* a token before
+  # they will issue a request, even against an emulator that checks nothing:
+  # google-cloud-storage for Java has no STORAGE_EMULATOR_HOST equivalent, so an
+  # application reaches fake-gcs-server through spring.cloud.gcp.storage.host
+  # while still holding real ServiceAccountCredentials. Those sign a JWT and
+  # exchange it at the token_uri in their key file, which points here — so the
+  # exchange never leaves the machine.
+  gcp-token-stub:
+    image: ghcr.io/datarocks-ag/gcp-token-stub:latest
+    ports:
+      - "8099:8099"
+    healthcheck:
+      # The scratch image has no shell, wget or curl, so the binary probes itself.
+      test: ["CMD", "/gcp-token-stub", "--ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   gcp-emulator-provisioner:
     image: ghcr.io/datarocks-ag/gcp-emulator-provisioner:latest
     depends_on:
@@ -48,6 +67,9 @@ services:
       LOG_LEVEL: info
     volumes:
       - ./config.example.yaml:/config.yaml:ro
+      # The credentials section writes the service account key here, for
+      # applications that will not start without GOOGLE_APPLICATION_CREDENTIALS.
+      - gcp-secrets:/secrets
 
   # Applications join the same stack and pick up the emulators from the same two
   # variables, after the provisioner has exited successfully:
@@ -56,6 +78,16 @@ services:
   #     depends_on:
   #       gcp-emulator-provisioner:
   #         condition: service_completed_successfully
+  #       gcp-token-stub:
+  #         condition: service_healthy
   #     environment:
   #       PUBSUB_EMULATOR_HOST: pubsub:8085
   #       STORAGE_EMULATOR_HOST: gcs:4443
+  #       # For a JVM application, which has no STORAGE_EMULATOR_HOST equivalent
+  #       # and so authenticates for real against the stub:
+  #       GOOGLE_APPLICATION_CREDENTIALS: /secrets/fake-sa.json
+  #     volumes:
+  #       - gcp-secrets:/secrets:ro
+
+volumes:
+  gcp-secrets:

@@ -24,10 +24,19 @@ var version = "dev"
 // reached over different endpoints, so a deployment whose emulators live in
 // separate stacks can run one section per container.
 const (
-	sectionAll     = "all"
-	sectionPubSub  = "pubsub"
-	sectionStorage = "storage"
+	sectionAll         = "all"
+	sectionPubSub      = "pubsub"
+	sectionStorage     = "storage"
+	sectionCredentials = "credentials"
 )
+
+// validSections is the allowlist for --section / GCP_SECTION.
+var validSections = map[string]bool{
+	sectionAll:         true,
+	sectionPubSub:      true,
+	sectionStorage:     true,
+	sectionCredentials: true,
+}
 
 func main() {
 	sectionFlag := flag.String("section", "",
@@ -59,10 +68,10 @@ func main() {
 	if section == "" {
 		section = envOrDefault("GCP_SECTION", sectionAll)
 	}
-	if section != sectionAll && section != sectionPubSub && section != sectionStorage {
+	if !validSections[section] {
 		slog.Error("Invalid section",
 			"section", section,
-			"valid", []string{sectionAll, sectionPubSub, sectionStorage},
+			"valid", []string{sectionAll, sectionPubSub, sectionStorage, sectionCredentials},
 		)
 		os.Exit(1)
 	}
@@ -119,12 +128,16 @@ func run(ctx context.Context, section string, opts provisioner.Options) error {
 	if err != nil {
 		return err
 	}
+	// Write the resolved id back so every section sees the same value, whether
+	// it came from GCP_PROJECT_ID or the config file.
+	cfg.ProjectID = projectID
 
 	slog.Info("Configuration loaded",
 		"section", section,
 		"project", projectID,
 		"topics", len(cfg.PubSub.Topics),
 		"buckets", len(cfg.Storage.Buckets),
+		"credentials", len(cfg.Credentials),
 	)
 
 	// Declared as interfaces rather than concrete pointers so that skipping a
@@ -157,6 +170,8 @@ func run(ctx context.Context, section string, opts provisioner.Options) error {
 		return p.ProvisionPubSub(ctx)
 	case sectionStorage:
 		return p.ProvisionStorage(ctx)
+	case sectionCredentials:
+		return p.ProvisionCredentials(ctx)
 	default:
 		return p.Run(ctx)
 	}

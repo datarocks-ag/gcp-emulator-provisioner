@@ -399,6 +399,31 @@ pubsub:
 			wantErr: "outside the range Google Cloud accepts",
 		},
 		{
+			name:    "credential without a path",
+			yaml:    "credentials:\n  - account: local-emulator\n",
+			wantErr: "credentials[0].path: is required",
+		},
+		{
+			name:    "duplicate credential path",
+			yaml:    "credentials:\n  - path: /tmp/a.json\n  - path: /tmp/a.json\n",
+			wantErr: "duplicate path",
+		},
+		{
+			name:    "invalid service account id",
+			yaml:    "credentials:\n  - path: /tmp/a.json\n    account: Not_Valid\n",
+			wantErr: "invalid service account id",
+		},
+		{
+			name:    "relative token uri",
+			yaml:    "credentials:\n  - path: /tmp/a.json\n    token_uri: /token\n",
+			wantErr: "must be an absolute url",
+		},
+		{
+			name:    "invalid credential strategy",
+			yaml:    "credentials:\n  - path: /tmp/a.json\n    strategy: rotate\n",
+			wantErr: "invalid strategy",
+		},
+		{
 			name:    "invalid strategy",
 			yaml:    "strategy: replace\n",
 			wantErr: "invalid strategy",
@@ -481,6 +506,46 @@ pubsub:
 `)
 	if _, err := Load(path); err != nil {
 		t.Fatalf("boundary values must be accepted: %v", err)
+	}
+}
+
+func TestLoadParsesCredentials(t *testing.T) {
+	t.Setenv("KEY_DIR", "/secrets")
+
+	path := writeConfig(t, `
+project_id: local-dev
+credentials:
+  - path: ${KEY_DIR}/fake-sa.json
+    account: orders-service
+    token_uri: http://oauth2-stub:8080/token
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Credentials) != 1 {
+		t.Fatalf("got %d credentials, want 1", len(cfg.Credentials))
+	}
+
+	cred := cfg.Credentials[0]
+	// Guards the expandConfig landmine — a key path is exactly the sort of
+	// field people template.
+	if cred.Path != "/secrets/fake-sa.json" {
+		t.Errorf("path not expanded from ${KEY_DIR}: %q", cred.Path)
+	}
+	if cred.Account != "orders-service" || cred.TokenURI != "http://oauth2-stub:8080/token" {
+		t.Errorf("credential = %+v", cred)
+	}
+}
+
+func TestEffectiveCredentialStrategyIgnoresTheGlobalDefault(t *testing.T) {
+	// A key file cannot converge under "update", so it never inherits it.
+	if got := EffectiveCredentialStrategy(""); got != "create" {
+		t.Errorf("EffectiveCredentialStrategy(\"\") = %q, want create", got)
+	}
+	if got := EffectiveCredentialStrategy("update"); got != "update" {
+		t.Errorf("an explicit update must be honoured, got %q", got)
 	}
 }
 

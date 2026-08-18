@@ -58,6 +58,7 @@ belongs in Terraform.
 
 | Resource | Managed |
 |---|---|
+| Service account keys | a local, non-authenticating key file for libraries that require `GOOGLE_APPLICATION_CREDENTIALS` |
 | Pub/Sub topics | labels, message retention |
 | Pub/Sub subscriptions | ack deadline, retention, retain-acked, exactly-once, expiration, labels, push config (endpoint, attributes, OIDC token, payload wrapper), dead letter policy, retry policy, filter and ordering (at creation) |
 | Cloud Storage buckets | existence, versioning, location and storage class (at creation) |
@@ -72,16 +73,121 @@ implements none of them — it serves no `SchemaService` at all — so a config
 using them could not be exercised locally, which is the whole point of this
 binary targeting both.
 
+## Fake service account keys
+
+Many libraries refuse to start without `GOOGLE_APPLICATION_CREDENTIALS` pointing
+at a parseable service account key — Spring Cloud GCP, for one, calls
+`GoogleCredentials.fromStream` eagerly at startup and parses the private key
+there and then. That happens even when every call the application goes on to
+make is answered by an emulator that ignores authentication entirely.
+
+```yaml
+credentials:
+  - path: ./secrets/fake-sa.json
+    account: local-emulator                    # optional
+    token_uri: http://oauth2-stub:8080/token   # optional
+```
+
+The generated file is **structurally a real key and cryptographically inert**.
+The RSA keypair is generated locally, so Google holds no matching public key and
+the file cannot authenticate to Google Cloud — it is the credential equivalent
+of a self-signed certificate for localhost. Verified as accepted by Google's own
+auth library, which is what makes it work where a hand-written placeholder fails.
+
+Every identifying field is a fixed, obviously non-Google value, so the file
+cannot be mistaken for a real credential:
+
+| Field | Value |
+|---|---|
+| `private_key_id` | `local-emulator-key` (a real one is 40 hex characters) |
+| `client_id` | `000000000000000000000` |
+| `client_email` | `<account>@<project>.iam.gserviceaccount.com` |
+
+`token_uri` points **every** OAuth URL in the file at one address, so a library
+that does try to mint a token reaches a local stub rather than
+`accounts.google.com`. Omit it to use Google's real endpoints.
+
+**The file is written world-readable (`0644`, in a `0755` directory).** That is
+deliberate: it exists to be read by *other* containers, which routinely run as a
+different UID than whatever wrote it, and `0600` would deny the only consumer it
+has at application startup. There is nothing to protect — the key authenticates
+to nothing.
+
+**The file is never rewritten once it exists.** Its contents are a fresh
+keypair, so rewriting would rotate the credential underneath whatever already
+loaded it, and could never converge. This is the one setting that does not
+inherit the global `strategy` — put `strategy: update` on the entry itself to
+force a new key.
+
+## The token stub
+
+A key file alone is not always enough. Some Google client libraries insist on
+*obtaining* a token before they will issue any request, even against an emulator
+that ignores authentication: `google-cloud-storage` for Java has no
+`STORAGE_EMULATOR_HOST` equivalent, so a JVM application reaches fake-gcs-server
+through `spring.cloud.gcp.storage.host` while still holding real
+`ServiceAccountCredentials`. Those sign a JWT and exchange it at the `token_uri`
+from their key file.
+
+`gcp-token-stub` is a second, tiny binary in this repository that answers that
+exchange locally, so it never leaves the machine:
+
+```bash
+gcp-token-stub                      # listens on :8099, serves /token
+gcp-token-stub --addr :9000
+gcp-token-stub --ping               # probe a running stub; for healthchecks
+```
+
+```
+POST /token  ->  200 {"access_token":"local-emulator-token","token_type":"Bearer","expires_in":3600}
+GET  /token  ->  the same, so a healthcheck can probe without forging a grant
+anything else -> 404 {"error":"not_found"}
+```
+
+Point a credential at it and the whole loop closes locally:
+
+```yaml
+credentials:
+  - path: /secrets/fake-sa.json
+    token_uri: http://gcp-token-stub:8099/token
+```
+
+**The assertion is deliberately not verified.** Nothing downstream checks the
+signatures either — fake-gcs-server does not validate them — so verifying here
+would only be theatre. This is a local development stub and must never be
+exposed to anything that matters.
+
+It ships as its own image, `ghcr.io/datarocks-ag/gcp-token-stub` — 6MB on
+`scratch`, against nginx:alpine's 62MB. Because `scratch` has no shell, `wget` or `curl`, the binary probes
+itself for container healthchecks:
+
+```yaml
+healthcheck:
+  test: ["CMD", "/gcp-token-stub", "--ping"]
+```
+
+| Setting | Flag | Env | Default |
+|---|---|---|---|
+| Listen address | `--addr` | `TOKEN_STUB_ADDR` | `:8099` |
+| Access token | `--token` | `TOKEN_STUB_ACCESS_TOKEN` | `local-emulator-token` |
+| Token lifetime | — | `TOKEN_STUB_EXPIRES_IN` | `3600` |
+| Log level | — | `LOG_LEVEL` | `info` |
+
 ## Sections
 
 Pub/Sub and Cloud Storage are independent services on different endpoints, so
-they are separate sections that can be run separately:
+they are separate sections that can be run separately. Credentials are a third
+section that touches no endpoint at all, so it runs with no emulator up:
 
 ```bash
-gcp-emulator-provisioner --section=pubsub    # topics and subscriptions only
-gcp-emulator-provisioner --section=storage   # buckets only
-gcp-emulator-provisioner                     # both (default)
+gcp-emulator-provisioner --section=pubsub       # topics and subscriptions only
+gcp-emulator-provisioner --section=storage      # buckets only
+gcp-emulator-provisioner --section=credentials  # key files only, no endpoint needed
+gcp-emulator-provisioner                        # all three (default)
 ```
+
+Within a full run, credentials are written first: the applications that need the
+key file usually start alongside the provisioner rather than after it.
 
 A section whose config is empty is skipped, and its client is never constructed —
 running against a stack with only fake-gcs-server needs no Pub/Sub endpoint.
@@ -93,7 +199,7 @@ running against a stack with only fake-gcs-server needs no Pub/Sub endpoint.
 | `GCP_PROJECT_ID` | conditional | — | Project every resource is created under. Required unless `project_id` is set in the config |
 | `PUBSUB_EMULATOR_HOST` | no | — | `host:port` of the Pub/Sub emulator. Unset means Google Cloud with Application Default Credentials |
 | `STORAGE_EMULATOR_HOST` | no | — | Host of the Cloud Storage emulator, with or without a scheme. Unset means Google Cloud |
-| `GCP_SECTION` | no | `all` | `pubsub`, `storage`, or `all` |
+| `GCP_SECTION` | no | `all` | `pubsub`, `storage`, `credentials`, or `all` |
 | `GCP_CONFIG_PATH` | no | `./config.yaml` | Path to the YAML config |
 | `DRY_RUN` | no | `false` | Set to `true` to log every mutation as a preview without applying it |
 | `LOG_LEVEL` | no | `info` | Log level (debug/info/warn/error) |
@@ -104,7 +210,7 @@ running against a stack with only fake-gcs-server needs no Pub/Sub endpoint.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--section` | `all` (or `GCP_SECTION`) | Provisioning section. The CLI flag takes precedence over the env var |
+| `--section` | `all` (or `GCP_SECTION`) | Provisioning section: `pubsub`, `storage`, `credentials` or `all`. The CLI flag takes precedence over the env var |
 | `--dry-run` | `false` (or `DRY_RUN`) | Log every mutation as a preview without applying it. Read-only calls still run so the preview reflects live state. The CLI flag takes precedence over the env var |
 | `--version` | — | Print version and exit |
 

@@ -128,11 +128,16 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Build binary
-        run: CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)" -o gcp-emulator-provisioner ./cmd/gcp-emulator-provisioner
+      - name: Build binaries
+        run: |
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
+          CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${VERSION}" -o gcp-emulator-provisioner ./cmd/gcp-emulator-provisioner
+          CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${VERSION}" -o gcp-token-stub ./cmd/gcp-token-stub
 
-      - name: Upload artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: gcp-emulator-provisioner
-          path: gcp-emulator-provisioner
+          name: binaries
+          path: |
+            gcp-emulator-provisioner
+            gcp-token-stub

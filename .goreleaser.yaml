@@ -1,7 +1,8 @@
 version: 2
 
 builds:
-  - main: ./cmd/gcp-emulator-provisioner
+  - id: gcp-emulator-provisioner
+    main: ./cmd/gcp-emulator-provisioner
     binary: gcp-emulator-provisioner
     env:
       - CGO_ENABLED=0
@@ -14,8 +15,36 @@ builds:
     ldflags:
       - -s -w -X main.version={{.Version}}
 
+  # The long-lived token stub, released alongside the one-shot provisioner.
+  - id: gcp-token-stub
+    main: ./cmd/gcp-token-stub
+    binary: gcp-token-stub
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+# One archive per binary, so a stack that only needs the stub does not download
+# the provisioner as well.
 archives:
-  - formats:
+  - id: gcp-emulator-provisioner
+    ids:
+      - gcp-emulator-provisioner
+    name_template: "gcp-emulator-provisioner_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+
+  - id: gcp-token-stub
+    ids:
+      - gcp-token-stub
+    name_template: "gcp-token-stub_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
       - tar.gz
 
 checksum:

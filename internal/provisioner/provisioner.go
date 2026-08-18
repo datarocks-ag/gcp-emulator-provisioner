@@ -137,10 +137,17 @@ func (p *Provisioner) ProvisionStorage(ctx context.Context) error {
 	return nil
 }
 
-// Run executes both sections: Pub/Sub, then Cloud Storage.
+// Run executes every section: credentials, then Pub/Sub, then Cloud Storage.
+//
+// Credentials come first because they touch no endpoint and the applications
+// that need the key file typically start alongside the provisioner — a stack
+// whose emulators are slow to come up should still get its key written.
 func (p *Provisioner) Run(ctx context.Context) error {
 	slog.Info("Starting provisioning")
 
+	if err := p.ProvisionCredentials(ctx); err != nil {
+		return err
+	}
 	if err := p.ProvisionPubSub(ctx); err != nil {
 		return err
 	}

@@ -9,6 +9,11 @@ subscriptions and Cloud Storage buckets from a YAML config file. Runs as a one-s
 `Job` / init container or Docker Compose init service, then exits. No long-running process, no
 health endpoint.
 
+That description is about **the provisioner**, and still holds exactly. The repository also ships
+a second, much smaller binary — `cmd/gcp-token-stub` — which is a long-lived helper rather than a
+provisioner, and does not change the rule above. See "The token stub is a helper, not a second
+provisioner" below.
+
 The same binary targets the local emulators (`cloud-sdk:emulators`, `fake-gcs-server`) and real
 Google Cloud — the client libraries switch on `PUBSUB_EMULATOR_HOST` / `STORAGE_EMULATOR_HOST`
 and otherwise use Application Default Credentials. That dual targeting is the reason the project
@@ -41,9 +46,17 @@ go test -race -run TestEnsureTopic ./internal/provisioner/        # single test
   `go test ./...` skips them
 - **CI lints without the integration tag**, so `go tool golangci-lint run` alone will not check
   `integration_test.go`. Use `--build-tags=integration` when touching it
-- Coverage gate: 60% total (`.testcoverage.yml`), enforced in CI. It currently sits just above
-  that — the `client` package's connect and CRUD paths are only reachable from integration tests,
-  which the gate does not count
+- Coverage gate: **two of them**, and the stricter one decides. `ci.yaml` runs
+  `vladopajic/go-test-coverage` twice — once with `config: ./.testcoverage.yml` (`total: 60`) and
+  again in the badge step with a hardcoded `threshold-total: 75`. A run at, say, 70% passes the
+  first and fails the second. Change both together or they drift apart
+- The `client` package talks to a live endpoint, so its connect and CRUD paths look
+  integration-only — but the gate does not count integration tests. They are covered instead by
+  in-process fakes in `internal/client`: `httptest` for the Cloud Storage JSON API
+  (`storage_test.go`) and a real gRPC server implementing `PublisherServer` / `SubscriberServer`
+  (`pubsub_server_test.go`). Both mirror emulator behaviour deliberately — fabricated
+  `US-CENTRAL1`/`STANDARD`, and a mask validated in full before anything is applied. Extend the
+  fakes rather than dropping back to integration-only coverage
 - The Pub/Sub emulator image is **amd64-only**. On an arm64 host each integration test spends
   ~15s booting it under emulation; the full Pub/Sub suite takes around 80s
 
@@ -55,6 +68,7 @@ gcp-emulator-provisioner/
 │   └── main.go              # entry point, flag/env parsing, section dispatch, exit codes
 ├── internal/
 │   ├── config/              # YAML load, ${VAR} expansion, validation
+│   ├── credentials/         # fake service account key generation (stdlib crypto only)
 │   ├── client/              # transport-neutral types over the GCP SDKs
 │   │   ├── client.go        # shared retry/backoff
 │   │   ├── pubsub.go        # topic + subscription admin, proto conversion
@@ -63,13 +77,65 @@ gcp-emulator-provisioner/
 │       ├── provisioner.go   # PubSubAdmin / StorageAdmin interfaces, section methods
 │       ├── topics.go
 │       ├── subscriptions.go
-│       └── buckets.go
+│       ├── buckets.go
+│       └── credentials.go
 ├── Dockerfile
 ├── docker-compose.yaml
 ├── Makefile
 ├── go.mod / go.sum
 └── config.example.yaml
 ```
+
+### The token stub is a helper, not a second provisioner
+
+`cmd/gcp-token-stub` serves a static OAuth2 token endpoint (`/token`) and stays up for the life of
+the stack. It exists because some client libraries insist on obtaining a token before issuing any
+request: `google-cloud-storage` for Java has no `STORAGE_EMULATOR_HOST` equivalent, so a JVM
+application reaches fake-gcs-server through `spring.cloud.gcp.storage.host` while still holding
+real `ServiceAccountCredentials`, signs a JWT, and exchanges it at the `token_uri` from its key
+file. Point that at the stub and the exchange stays on the machine.
+
+- **It does not verify the assertion, on purpose.** Nothing downstream verifies signatures either,
+  so checking here would be theatre. Do not add verification.
+- **It is a separate binary and a separate image** (`Dockerfile.token-stub`), which is what keeps
+  the provisioner's one-shot contract intact. Do not fold the server into the provisioner.
+- **`scratch` has no shell, `wget` or `curl`**, so the compose healthcheck runs the binary with
+  `--ping`, which probes a running stub over HTTP and exits non-zero if it does not answer. Any
+  healthcheck written as `CMD-SHELL` will fail in this image.
+- It replaces what would otherwise be an nginx container serving 12 lines of static JSON, and its
+  response is byte-identical to that.
+
+### Credentials are a third section, and the only one that touches no endpoint
+
+`ProvisionCredentials` writes local service account key files so libraries that demand
+`GOOGLE_APPLICATION_CREDENTIALS` will start — Spring Cloud GCP parses the private key eagerly at
+startup, so a placeholder string fails where a real keypair succeeds. `internal/credentials`
+generates an RSA keypair with stdlib crypto only; Google holds no matching public key, so the
+file authenticates to nothing. Verified accepted by `google.CredentialsFromJSON`.
+
+Two rules that are easy to break:
+
+- **It is create-only, and deliberately ignores the global strategy.** Every other resource falls
+  back to `cfg.Strategy`; `EffectiveCredentialStrategy` does not, because the contents are a
+  freshly generated keypair. Under a global `update` the file would be rewritten with a *different
+  private key* on every run, rotating the credential underneath whatever already loaded it and
+  never converging — the same hazard that keeps bucket labels out of the schema. Only an explicit
+  `strategy: update` on the credential regenerates.
+- **`token_uri` sets all four OAuth URLs**, not just `token_uri`. That is the point: a library
+  that does try to mint a token then reaches a local stub instead of `accounts.google.com`.
+- **The key is written `0644` into a `0755` directory, and that is not an oversight.** It exists
+  to be read by other containers, which run as a different UID than the provisioner; `0600` — the
+  reflex for anything credential-shaped — denies the only consumer the file has, at application
+  startup. The key authenticates to nothing, so there is nothing to protect. The test pins the
+  literal modes rather than the constants, so tightening them has to be deliberate.
+
+This is the one feature that only makes sense against an emulator, which the project name now
+reflects. It does not violate the dual-target rule — it writes a local file and calls no API, so
+nothing behaves differently between endpoints. Do not extend it into anything that does.
+
+`main.go` writes the resolved project id back into `cfg.ProjectID` before constructing the
+provisioner, so a section reading it sees the same value whether it came from `GCP_PROJECT_ID` or
+the config file.
 
 ### Two independent sections, not ordered phases
 
@@ -277,8 +343,13 @@ authorization error looks identical to an outage for five minutes.
 
 - `.github/workflows/ci.yaml` — runs on `feature/**`, `bugfix/**`, `hotfix/**`, `release/**`,
   `dependabot/**`: lint, unit tests + coverage badge, integration tests, Trivy scan, build
-- `.github/workflows/release.yaml` — runs on `develop` and `v*` tags: publishes a multi-arch image
-  to `ghcr.io/datarocks-ag/gcp-emulator-provisioner`; GoReleaser runs on tags only
+- `.github/workflows/release.yaml` — runs on `develop` and `v*` tags. The `docker` job is a matrix
+  over the two images, publishing multi-arch to `ghcr.io/datarocks-ag/gcp-emulator-provisioner`
+  and `ghcr.io/datarocks-ag/gcp-token-stub`. Adding a binary means adding a matrix entry *and* a
+  GoReleaser build id — the image name comes from `matrix.image`, not `IMAGE_NAME`, which only
+  ever names the repository. The buildx cache is scoped per image, or the legs evict each other
+- GoReleaser runs on tags only, and emits one archive per binary so a stack that needs only the
+  stub does not download the provisioner as well
 - There is no plain-push CI on `develop`/`main` — work lands on prefixed branches via PR
 - Both emulator images are unpinned in tests and compose, so upstream changes can break CI
   without any local change
