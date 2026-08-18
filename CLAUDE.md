@@ -123,6 +123,11 @@ Two rules that are easy to break:
   `strategy: update` on the credential regenerates.
 - **`token_uri` sets all four OAuth URLs**, not just `token_uri`. That is the point: a library
   that does try to mint a token then reaches a local stub instead of `accounts.google.com`.
+- **The key is written `0644` into a `0755` directory, and that is not an oversight.** It exists
+  to be read by other containers, which run as a different UID than the provisioner; `0600` — the
+  reflex for anything credential-shaped — denies the only consumer the file has, at application
+  startup. The key authenticates to nothing, so there is nothing to protect. The test pins the
+  literal modes rather than the constants, so tightening them has to be deliberate.
 
 This is the one feature that only makes sense against an emulator, which the project name now
 reflects. It does not violate the dual-target rule — it writes a local file and calls no API, so

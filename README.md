@@ -107,6 +107,12 @@ cannot be mistaken for a real credential:
 that does try to mint a token reaches a local stub rather than
 `accounts.google.com`. Omit it to use Google's real endpoints.
 
+**The file is written world-readable (`0644`, in a `0755` directory).** That is
+deliberate: it exists to be read by *other* containers, which routinely run as a
+different UID than whatever wrote it, and `0600` would deny the only consumer it
+has at application startup. There is nothing to protect — the key authenticates
+to nothing.
+
 **The file is never rewritten once it exists.** Its contents are a fresh
 keypair, so rewriting would rotate the credential underneath whatever already
 loaded it, and could never converge. This is the one setting that does not
@@ -151,8 +157,8 @@ signatures either — fake-gcs-server does not validate them — so verifying he
 would only be theatre. This is a local development stub and must never be
 exposed to anything that matters.
 
-It ships as its own `scratch` image, a few megabytes against nginx:alpine's
-~50MB. Because `scratch` has no shell, `wget` or `curl`, the binary probes
+It ships as its own image, `ghcr.io/datarocks-ag/gcp-token-stub` — 6MB on
+`scratch`, against nginx:alpine's 62MB. Because `scratch` has no shell, `wget` or `curl`, the binary probes
 itself for container healthchecks:
 
 ```yaml

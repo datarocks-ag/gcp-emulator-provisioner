@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-18
+
+Local stacks can now satisfy client libraries that insist on a credential.
+Spring Cloud GCP parses `GOOGLE_APPLICATION_CREDENTIALS` eagerly at startup, and
+`google-cloud-storage` for Java has no `STORAGE_EMULATOR_HOST` equivalent — it
+authenticates for real even against an emulator that checks nothing. This
+release covers both halves locally: a generated key file, and a token endpoint
+for it to talk to. Together they replace the OpenSSL and nginx sidecars such a
+stack would otherwise need.
+
+The provisioner's contract is unchanged: still one-shot, still no long-running
+process, still no health endpoint. The token stub is a second, separate binary
+with its own lifecycle.
+
 ### Added
 
 - **Fake service account keys.** A `credentials:` section writes local key files
@@ -27,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so rewriting would rotate the credential underneath whatever already loaded it
   and could never converge. This is the one setting that does not inherit the
   global strategy; `strategy: update` on the entry forces a new key.
+
+  The key is written `0644` into a `0755` directory. That is deliberate: it
+  exists to be read by other containers, which routinely run as a different UID
+  than the provisioner, and `0600` would deny the only consumer it has.
 
 - **`gcp-token-stub`**, a second binary serving a static OAuth2 token endpoint
   for local stacks. Some Google client libraries insist on obtaining a token
@@ -156,5 +174,6 @@ Initial release.
   field drift, the push config oneofs, and the emulator label gap including that
   a refused path does not discard the rest of its batch.
 
-[Unreleased]: https://github.com/datarocks-ag/gcp-emulator-provisioner/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/datarocks-ag/gcp-emulator-provisioner/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/datarocks-ag/gcp-emulator-provisioner/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/datarocks-ag/gcp-emulator-provisioner/releases/tag/v1.0.0
