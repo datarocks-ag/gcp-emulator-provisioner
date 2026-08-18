@@ -135,7 +135,7 @@ jobs:
           CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${VERSION}" -o gcp-token-stub ./cmd/gcp-token-stub
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: binaries
           path: |
