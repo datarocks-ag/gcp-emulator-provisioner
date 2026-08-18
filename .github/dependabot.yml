@@ -1,0 +1,75 @@
+# Dependabot version updates.
+#
+# Security updates already worked without this file — they are enabled in the
+# repository settings and always target the default branch. This adds *version*
+# updates on top, which do need configuration.
+#
+# Two things here are deliberate and easy to break:
+#
+#   - There is no `target-branch`. The default branch is already `develop`, so
+#     setting it would be redundant, and specifying it stops Dependabot raising
+#     security updates for that ecosystem — the opposite of what we want.
+#   - The branch name prefix is left at the default, `dependabot/...`, because
+#     ci.yaml triggers on `dependabot/**`. Renaming it means Dependabot's pull
+#     requests silently stop running CI.
+version: 2
+
+updates:
+  # Go modules. Minor and patch updates arrive as a single grouped pull request
+  # to keep the noise down; majors come individually, since they deserve to be
+  # read one at a time.
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Zurich
+    open-pull-requests-limit: 5
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # The actions used by ci.yaml and release.yaml. These drift quietly and are
+  # the most likely thing to break a pipeline that nobody touched.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Zurich
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # Builder base images in Dockerfile and Dockerfile.token-stub. The final
+  # stages are `scratch`, which has nothing to update.
+  #
+  # Note that a bump here moves the builder's Go version independently of
+  # GO_VERSION in the workflows, so the two can drift apart: the images would
+  # still build, but on a different toolchain than CI tests with.
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Zurich
+    open-pull-requests-limit: 5
+    groups:
+      docker-base-images:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
