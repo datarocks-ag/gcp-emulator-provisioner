@@ -68,6 +68,11 @@ with its own lifecycle.
   `ghcr.io/datarocks-ag/gcp-token-stub`, each scanned by Trivy before it is
   pushed. GoReleaser emits a separate archive per binary.
 
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**, describing how the
+  components interact, with diagrams: the local stack topology, the credential
+  and token-exchange sequence, package layering, section ordering, the
+  reconciliation loop, and what deliberately does not exist.
+
 - **`--section=credentials`**, which touches no endpoint and so runs with no
   emulator up. In a full run credentials are written first, because the
   applications that need the key file usually start alongside the provisioner.

@@ -19,7 +19,8 @@ Google Cloud — the client libraries switch on `PUBSUB_EMULATOR_HOST` / `STORAG
 and otherwise use Application Default Credentials. That dual targeting is the reason the project
 exists; do not add anything that only works against one of them.
 
-See [README.md](README.md) for the user-facing contract. This file covers what the README does
+See [README.md](README.md) for the user-facing contract and
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the component diagrams. This file covers what the README does
 not — the internal structure and the constraints that are easy to break.
 
 ## Build & Test Commands
