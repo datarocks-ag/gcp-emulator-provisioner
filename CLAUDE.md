@@ -9,6 +9,11 @@ subscriptions and Cloud Storage buckets from a YAML config file. Runs as a one-s
 `Job` / init container or Docker Compose init service, then exits. No long-running process, no
 health endpoint.
 
+That description is about **the provisioner**, and still holds exactly. The repository also ships
+a second, much smaller binary — `cmd/gcp-token-stub` — which is a long-lived helper rather than a
+provisioner, and does not change the rule above. See "The token stub is a helper, not a second
+provisioner" below.
+
 The same binary targets the local emulators (`cloud-sdk:emulators`, `fake-gcs-server`) and real
 Google Cloud — the client libraries switch on `PUBSUB_EMULATOR_HOST` / `STORAGE_EMULATOR_HOST`
 and otherwise use Application Default Credentials. That dual targeting is the reason the project
@@ -63,6 +68,7 @@ gcp-emulator-provisioner/
 │   └── main.go              # entry point, flag/env parsing, section dispatch, exit codes
 ├── internal/
 │   ├── config/              # YAML load, ${VAR} expansion, validation
+│   ├── credentials/         # fake service account key generation (stdlib crypto only)
 │   ├── client/              # transport-neutral types over the GCP SDKs
 │   │   ├── client.go        # shared retry/backoff
 │   │   ├── pubsub.go        # topic + subscription admin, proto conversion
@@ -71,13 +77,60 @@ gcp-emulator-provisioner/
 │       ├── provisioner.go   # PubSubAdmin / StorageAdmin interfaces, section methods
 │       ├── topics.go
 │       ├── subscriptions.go
-│       └── buckets.go
+│       ├── buckets.go
+│       └── credentials.go
 ├── Dockerfile
 ├── docker-compose.yaml
 ├── Makefile
 ├── go.mod / go.sum
 └── config.example.yaml
 ```
+
+### The token stub is a helper, not a second provisioner
+
+`cmd/gcp-token-stub` serves a static OAuth2 token endpoint (`/token`) and stays up for the life of
+the stack. It exists because some client libraries insist on obtaining a token before issuing any
+request: `google-cloud-storage` for Java has no `STORAGE_EMULATOR_HOST` equivalent, so a JVM
+application reaches fake-gcs-server through `spring.cloud.gcp.storage.host` while still holding
+real `ServiceAccountCredentials`, signs a JWT, and exchanges it at the `token_uri` from its key
+file. Point that at the stub and the exchange stays on the machine.
+
+- **It does not verify the assertion, on purpose.** Nothing downstream verifies signatures either,
+  so checking here would be theatre. Do not add verification.
+- **It is a separate binary and a separate image** (`Dockerfile.token-stub`), which is what keeps
+  the provisioner's one-shot contract intact. Do not fold the server into the provisioner.
+- **`scratch` has no shell, `wget` or `curl`**, so the compose healthcheck runs the binary with
+  `--ping`, which probes a running stub over HTTP and exits non-zero if it does not answer. Any
+  healthcheck written as `CMD-SHELL` will fail in this image.
+- It replaces what would otherwise be an nginx container serving 12 lines of static JSON, and its
+  response is byte-identical to that.
+
+### Credentials are a third section, and the only one that touches no endpoint
+
+`ProvisionCredentials` writes local service account key files so libraries that demand
+`GOOGLE_APPLICATION_CREDENTIALS` will start — Spring Cloud GCP parses the private key eagerly at
+startup, so a placeholder string fails where a real keypair succeeds. `internal/credentials`
+generates an RSA keypair with stdlib crypto only; Google holds no matching public key, so the
+file authenticates to nothing. Verified accepted by `google.CredentialsFromJSON`.
+
+Two rules that are easy to break:
+
+- **It is create-only, and deliberately ignores the global strategy.** Every other resource falls
+  back to `cfg.Strategy`; `EffectiveCredentialStrategy` does not, because the contents are a
+  freshly generated keypair. Under a global `update` the file would be rewritten with a *different
+  private key* on every run, rotating the credential underneath whatever already loaded it and
+  never converging — the same hazard that keeps bucket labels out of the schema. Only an explicit
+  `strategy: update` on the credential regenerates.
+- **`token_uri` sets all four OAuth URLs**, not just `token_uri`. That is the point: a library
+  that does try to mint a token then reaches a local stub instead of `accounts.google.com`.
+
+This is the one feature that only makes sense against an emulator, which the project name now
+reflects. It does not violate the dual-target rule — it writes a local file and calls no API, so
+nothing behaves differently between endpoints. Do not extend it into anything that does.
+
+`main.go` writes the resolved project id back into `cfg.ProjectID` before constructing the
+provisioner, so a section reading it sees the same value whether it came from `GCP_PROJECT_ID` or
+the config file.
 
 ### Two independent sections, not ordered phases
 

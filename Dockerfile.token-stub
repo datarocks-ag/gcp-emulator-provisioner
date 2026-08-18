@@ -1,0 +1,18 @@
+# Local OAuth2 token stub. Separate image from the provisioner: that one is a
+# one-shot Job that exits, this one stays up for the life of the stack.
+FROM golang:1.25-alpine AS builder
+
+ARG VERSION=dev
+
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${VERSION}" -o /gcp-token-stub ./cmd/gcp-token-stub
+
+FROM scratch
+# No CA certificates: the stub only serves plain HTTP on the local network and
+# makes no outbound calls of its own.
+COPY --from=builder /gcp-token-stub /gcp-token-stub
+EXPOSE 8099
+ENTRYPOINT ["/gcp-token-stub"]

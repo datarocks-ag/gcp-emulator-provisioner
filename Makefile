@@ -1,9 +1,13 @@
-.PHONY: build test test-integration lint vet fmt mod-tidy docker clean
+.PHONY: build build-token-stub test test-integration lint vet fmt mod-tidy docker docker-token-stub clean
 
 BINARY := gcp-emulator-provisioner
+TOKEN_STUB := gcp-token-stub
 
 build:
 	go build -o $(BINARY) ./cmd/gcp-emulator-provisioner
+
+build-token-stub:
+	go build -o $(TOKEN_STUB) ./cmd/gcp-token-stub
 
 test:
 	go test -race ./...
@@ -26,5 +30,8 @@ mod-tidy:
 docker:
 	docker build -t $(BINARY) .
 
+docker-token-stub:
+	docker build -f Dockerfile.token-stub -t $(TOKEN_STUB) .
+
 clean:
-	rm -f $(BINARY)
+	rm -f $(BINARY) $(TOKEN_STUB)

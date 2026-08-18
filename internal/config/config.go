@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -38,6 +39,30 @@ type Config struct {
 	ProjectID string  `yaml:"project_id"`
 	PubSub    PubSub  `yaml:"pubsub"`
 	Storage   Storage `yaml:"storage"`
+	// Credentials are local key files, not a Google Cloud resource. They are
+	// listed here so one config describes everything a dev stack needs.
+	Credentials []Credential `yaml:"credentials"`
+}
+
+// Credential is a service account key file to write locally.
+//
+// The key never authenticates to anything: it exists so libraries that refuse
+// to start without GOOGLE_APPLICATION_CREDENTIALS have a parseable file.
+type Credential struct {
+	// Path is where the key file is written, absolute or relative to the
+	// working directory.
+	Path string `yaml:"path"`
+	// Strategy is "create" (the default here) or "update". Unlike every other
+	// resource, this does not fall back to the global strategy — see
+	// EffectiveCredentialStrategy.
+	Strategy string `yaml:"strategy"`
+	// Account is the service account id in the generated address. Defaults to
+	// "local-emulator".
+	Account string `yaml:"account"`
+	// TokenURI points every OAuth URL in the file at one address, so a library
+	// that does try to mint a token reaches a local stub rather than Google.
+	// Empty uses Google's real endpoints.
+	TokenURI string `yaml:"token_uri"`
 }
 
 // PubSub groups the Pub/Sub resources to provision.
@@ -228,6 +253,14 @@ func expandConfig(cfg *Config) {
 		}
 	}
 
+	for i := range cfg.Credentials {
+		c := &cfg.Credentials[i]
+		c.Path = expandEnvVars(c.Path)
+		c.Strategy = expandEnvVars(c.Strategy)
+		c.Account = expandEnvVars(c.Account)
+		c.TokenURI = expandEnvVars(c.TokenURI)
+	}
+
 	for i := range cfg.Storage.Buckets {
 		b := &cfg.Storage.Buckets[i]
 		b.Name = expandEnvVars(b.Name)
@@ -304,7 +337,10 @@ func validate(cfg *Config) error {
 	if err := validateTopics(cfg.PubSub.Topics); err != nil {
 		return err
 	}
-	return validateBuckets(cfg.Storage.Buckets)
+	if err := validateBuckets(cfg.Storage.Buckets); err != nil {
+		return err
+	}
+	return validateCredentials(cfg.Credentials)
 }
 
 // validateStrategy returns an error if the strategy value is invalid.
@@ -677,6 +713,68 @@ func validateBuckets(buckets []Bucket) error {
 		}
 		if !validStorageClasses[strings.ToUpper(b.StorageClass)] {
 			return fmt.Errorf("%s.storage_class: invalid storage class %q", prefix, b.StorageClass)
+		}
+	}
+
+	return nil
+}
+
+// accountPattern matches a Google service account id: 6-30 characters, starting
+// with a lowercase letter, made up of lowercase letters, digits and hyphens.
+var accountPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{4,28}[a-z0-9]$`)
+
+// EffectiveCredentialStrategy resolves a credential's strategy.
+//
+// Unlike every other resource, this deliberately does not fall back to the
+// global strategy. A key file's contents are a freshly generated keypair, so
+// "update" cannot converge — it would hand running applications a different
+// private key on every run. Regenerating therefore has to be asked for on the
+// credential itself.
+func EffectiveCredentialStrategy(strategy string) string {
+	if strategy == "" {
+		return "create"
+	}
+	return strategy
+}
+
+func validateCredentials(creds []Credential) error {
+	paths := make(map[string]bool)
+
+	for i, c := range creds {
+		prefix := fmt.Sprintf("credentials[%d]", i)
+
+		if err := validateStrategy(prefix+".strategy", c.Strategy); err != nil {
+			return err
+		}
+
+		if c.Path == "" {
+			return fmt.Errorf("%s.path: is required", prefix)
+		}
+		if containsNullByte(c.Path) {
+			return fmt.Errorf("%s.path: contains null byte", prefix)
+		}
+		if paths[c.Path] {
+			return fmt.Errorf("%s.path: duplicate path %q", prefix, c.Path)
+		}
+		paths[c.Path] = true
+
+		if c.Account != "" && !accountPattern.MatchString(c.Account) {
+			return fmt.Errorf(
+				"%s.account: invalid service account id %q (must be 6-30 chars, lowercase letters, digits and hyphens, starting with a letter)",
+				prefix, c.Account)
+		}
+
+		if c.TokenURI != "" {
+			if containsNullByte(c.TokenURI) {
+				return fmt.Errorf("%s.token_uri: contains null byte", prefix)
+			}
+			parsed, err := url.Parse(c.TokenURI)
+			if err != nil {
+				return fmt.Errorf("%s.token_uri: invalid url %q: %w", prefix, c.TokenURI, err)
+			}
+			if parsed.Scheme == "" || parsed.Host == "" {
+				return fmt.Errorf("%s.token_uri: %q must be an absolute url with a scheme and host", prefix, c.TokenURI)
+			}
 		}
 	}
 

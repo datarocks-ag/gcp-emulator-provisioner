@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Fake service account keys.** A `credentials:` section writes local key files
+  for libraries that refuse to start without `GOOGLE_APPLICATION_CREDENTIALS` —
+  Spring Cloud GCP parses the private key eagerly at startup, so a placeholder
+  string fails where a real keypair succeeds. The RSA keypair is generated
+  locally with stdlib crypto, so Google holds no matching public key and the
+  file authenticates to nothing; it is the credential equivalent of a
+  self-signed certificate for localhost, and is verified as accepted by Google's
+  own auth library. `private_key_id` and `client_id` are fixed, obviously
+  non-Google values so the file cannot be mistaken for a real credential.
+
+  `token_uri` points every OAuth URL in the file at one address, so a library
+  that does try to mint a token reaches a local stub rather than
+  `accounts.google.com`.
+
+  The file is never rewritten once it exists — its contents are a fresh keypair,
+  so rewriting would rotate the credential underneath whatever already loaded it
+  and could never converge. This is the one setting that does not inherit the
+  global strategy; `strategy: update` on the entry forces a new key.
+
+- **`gcp-token-stub`**, a second binary serving a static OAuth2 token endpoint
+  for local stacks. Some Google client libraries insist on obtaining a token
+  before issuing any request, even against an emulator that ignores
+  authentication: `google-cloud-storage` for Java has no
+  `STORAGE_EMULATOR_HOST` equivalent, so a JVM application reaches
+  fake-gcs-server through `spring.cloud.gcp.storage.host` while still holding
+  real `ServiceAccountCredentials`, signs a JWT, and exchanges it at the
+  `token_uri` from its key file. Pointing that at the stub keeps the exchange on
+  the machine.
+
+  The assertion is deliberately not verified, because nothing downstream
+  verifies signatures either. It ships as its own `scratch` image — a few
+  megabytes in place of an nginx container serving static JSON — and, since
+  `scratch` has no shell, probes itself with `--ping` for container
+  healthchecks. The provisioner remains one-shot; the stub is a separate binary
+  with its own lifecycle.
+
+- **`--section=credentials`**, which touches no endpoint and so runs with no
+  emulator up. In a full run credentials are written first, because the
+  applications that need the key file usually start alongside the provisioner.
+
 ## [1.0.0] - 2026-08-16
 
 Initial release.

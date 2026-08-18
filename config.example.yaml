@@ -6,6 +6,28 @@
 # Every resource is created under this project. GCP_PROJECT_ID overrides it.
 project_id: local-dev
 
+# Service account key files for local development.
+#
+# The key is generated here and authenticates to nothing — Google holds no
+# matching public key. It exists because many libraries (Spring Cloud GCP among
+# them) parse GOOGLE_APPLICATION_CREDENTIALS eagerly at startup and refuse to
+# run without a structurally valid key, even when every call they make is
+# answered by an emulator.
+#
+# The file is never rewritten once it exists: its contents are a fresh keypair,
+# so rewriting would rotate the credential underneath whatever already loaded
+# it. Set `strategy: update` on the entry to force a new one.
+credentials:
+  - path: /secrets/fake-sa.json
+    # Service account id in the generated address. Default: local-emulator.
+    account: local-emulator
+    # Points every OAuth URL in the file at one address, so a library that does
+    # try to mint a token reaches the local stub instead of accounts.google.com.
+    # This is what a JVM application needs: google-cloud-storage for Java has no
+    # STORAGE_EMULATOR_HOST equivalent, so it authenticates for real and the
+    # exchange has to land somewhere local. Omit to use Google's endpoints.
+    token_uri: http://gcp-token-stub:8099/token
+
 pubsub:
   topics:
     - name: orders
