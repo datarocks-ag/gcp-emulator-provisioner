@@ -19,8 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   `google-cloud-cli` is the renamed `cloud-sdk` repository and the one publishing
   arm64, so the Pub/Sub emulator now runs natively on Apple Silicon rather than
-  under emulation. Both images are pinned here, unlike `docker-compose.yaml` and
-  the integration tests, which still float.
+  under emulation. The same two pins are now used everywhere — see Changed below.
 
   It also wires fake-gcs-server's object notifications to the Pub/Sub emulator,
   which reproduces GCS bucket notifications offline. Verified end to end against

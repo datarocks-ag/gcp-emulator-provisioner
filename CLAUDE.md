@@ -380,7 +380,7 @@ authorization error looks identical to an outage for five minutes.
   | GCS `uniform_bucket_level_access`, `public_access_prevention`, ACLs | The IAM boundary above |
   | GCS `labels`, `lifecycle`, `cors` | Accepted and discarded by fake-gcs-server — drift never converges |
   | `subscription.detached` | Driven by the `DetachSubscription` RPC, not a declarative setting |
-- The Compose healthchecks are verified against the images: `cloud-sdk:emulators` ships `curl`
-  and the emulator answers a plain HTTP `GET /` with 200 despite speaking gRPC;
-  `fake-gcs-server` ships `wget` but **not** `curl`.
+- The Compose healthchecks are verified against the pinned images:
+  `google-cloud-cli:581.0.0-emulators` ships `curl` and the emulator answers a plain HTTP `GET /`
+  with 200 despite speaking gRPC; `fake-gcs-server:1.55.1` ships `wget` but **not** `curl`.
 - `pubsub` in Compose needs a long `start_period` because the image is roughly a gigabyte.
