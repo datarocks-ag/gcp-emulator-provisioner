@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **[docker-compose.emulators.yaml](docker-compose.emulators.yaml)**, the two
+  upstream emulator containers on their own, for a project that wants the
+  emulator stack without re-deriving it. Pinned images
+  (`google-cloud-cli:581.0.0-emulators`, `fake-gcs-server:1.55.1`), the
+  arguments, the healthchecks, and loopback-bound ports; everything a consumer
+  normally changes is an environment variable with a default, so a vendored copy
+  diffs cleanly against the next update instead of replaying local edits.
+
+  `google-cloud-cli` is the renamed `cloud-sdk` repository and the one publishing
+  arm64, so the Pub/Sub emulator now runs natively on Apple Silicon rather than
+  under emulation. Both images are pinned here, unlike `docker-compose.yaml` and
+  the integration tests, which still float.
+
+  It also wires fake-gcs-server's object notifications to the Pub/Sub emulator,
+  which reproduces GCS bucket notifications offline. Verified end to end against
+  1.55.1: an upload publishes `OBJECT_FINALIZE` to the configured topic, and a
+  subscriber receives it. If the topic is not declared the upload still answers
+  200 and the event is dropped, leaving only `error publishing event: ...
+  NotFound` in the container log — so a missing topic fails silently rather than
+  loudly, which the README now says.
+
+  Deliberately **not** a pair of derived images published from this repository:
+  that would make it the vendor of two artifacts it does not own, delaying every
+  upstream CVE fix behind a rebuild here, and the arguments that actually differ
+  per stack — `-public-host`, the notification topic, the storage backend —
+  cannot be baked into an image regardless.
+
+
 ## [2.0.1] - 2026-08-18
 
 Documentation and dependencies. No change to the provisioner's or the stub's
