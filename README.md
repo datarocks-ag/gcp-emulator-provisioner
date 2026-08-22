@@ -10,7 +10,7 @@ as a one-shot container — either as a Docker Compose init service (via
 
 The name says *emulator* because that is the primary use case: standing up the
 Pub/Sub and Cloud Storage state a local dev stack expects, against
-`gcr.io/google.com/cloudsdktool/cloud-sdk:emulators` and `fsouza/fake-gcs-server`.
+`gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators` and `fsouza/fake-gcs-server`.
 Unlike the sibling provisioners in this ecosystem, which drive the genuine
 article, there is no way to run Google Cloud locally — so the local target is a
 reimplementation, and coping with its gaps is a first-class design concern here.
@@ -491,10 +491,12 @@ real. `STORAGE_EMULATOR_HOST` is what decides.
 labels and lifecycle rules — the `POST` returns 200 and the bucket never reports
 the policy back. That is why the config schema has no `cors`.
 
-**The Pub/Sub emulator image is amd64-only.** On an arm64 host it runs under
-emulation and takes appreciably longer to start, which is why the Compose
-healthcheck allows a long `start_period` and the integration tests allow a
-five-minute startup.
+**The Pub/Sub emulator image is roughly a gigabyte**, so the first pull dominates
+a cold start — which is why the Compose healthcheck allows a long `start_period`
+and the integration tests allow a five-minute startup. Compose and the tests pin
+`gcr.io/google.com/cloudsdktool/google-cloud-cli:581.0.0-emulators`, the renamed
+`cloud-sdk` repository and the one publishing arm64, so an Apple Silicon host runs
+it natively instead of under emulation.
 
 ## Dry Run
 

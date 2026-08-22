@@ -36,6 +36,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per stack — `-public-host`, the notification topic, the storage backend —
   cannot be baked into an image regardless.
 
+### Changed
+
+- **Both emulator images are now pinned** in `docker-compose.yaml` and the
+  integration tests, which previously floated on `cloud-sdk:emulators` and
+  `fake-gcs-server:latest`. An upstream release could break CI with no local
+  commit to blame, and this repository's behaviour notes — which emulator update
+  masks work, which fields are silently discarded — are only meaningful against a
+  known version.
+
+  The Pub/Sub emulator moves to `google-cloud-cli:581.0.0-emulators`, the renamed
+  `cloud-sdk` repository and the one publishing arm64, so an Apple Silicon host
+  runs it natively rather than under emulation. The test-side pins live in
+  `pubSubEmulatorImage` / `fakeGCSImage`; those and the two Compose files move
+  together. Dependabot does not track them, so bumping stays manual.
 
 ## [2.0.1] - 2026-08-18
 
