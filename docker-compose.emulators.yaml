@@ -1,0 +1,139 @@
+# The two upstream emulator containers, pinned and parameterised, in a form
+# another project can lift whole.
+#
+# This is the counterpart to docker-compose.yaml. That file is the worked example
+# this repository runs on `docker compose up`: emulators, token stub, provisioner
+# and a commented application service. This one carries only the pieces every
+# consuming stack ends up re-deriving — the emulator images, their arguments and
+# their healthchecks — and leaves the provisioner and the token stub to the
+# consumer, which is where the config path and volumes belong anyway.
+#
+# Use it from your own Compose file:
+#
+#   include:
+#     - path: docker-compose.emulators.yaml
+#
+#   services:
+#     gcp-emulator-provisioner:
+#       image: ghcr.io/datarocks-ag/gcp-emulator-provisioner:latest
+#       depends_on:
+#         pubsub: { condition: service_healthy }
+#         gcs:    { condition: service_healthy }
+#       environment:
+#         GCP_PROJECT_ID: local-dev
+#         PUBSUB_EMULATOR_HOST: pubsub:8085
+#         STORAGE_EMULATOR_HOST: gcs:4443
+#       volumes:
+#         - ./gcp-config.yaml:/config.yaml:ro
+#
+# `include:` (Compose v2.20+) resolves local paths only — there is no URL form —
+# so vendor this file by copy, submodule or subtree rather than pointing at a raw
+# URL. Everything a consumer normally changes is an environment variable with a
+# default, so a vendored copy stays byte-identical to the original and the next
+# update diffs cleanly instead of replaying local edits.
+#
+# Why a fragment and not a derived image: publishing `gcp-pubsub-emulator` and
+# `gcp-fake-gcs` from here would make this repository the vendor of two artifacts
+# it does not own, so every gcloud-SDK and fake-gcs-server CVE would wait on a
+# rebuild here before reaching you. And the arguments that actually differ per
+# stack — -public-host, the notification topic, the storage backend — cannot be
+# baked into an image anyway; they would just move into an env-to-flag wrapper
+# script that drifts from the flags it wraps.
+#
+# The container-internal ports are fixed at 8085 and 4443. Only the published
+# host ports are variable, so in-network addresses (`pubsub:8085`, `gcs:4443`)
+# and the healthchecks below stay the same whatever the host does.
+
+services:
+  # The gcloud Pub/Sub emulator. In-memory only: topics and subscriptions do not
+  # survive a restart, and the provisioner re-creates them on every `up`.
+  #
+  # `google-cloud-cli` is the renamed `cloud-sdk` repository and the one that
+  # publishes arm64, so an Apple Silicon host runs it natively instead of under
+  # emulation. Pinned rather than floating `:emulators` — the tag moves, and an
+  # upstream change would otherwise break a stack with no local commit to blame.
+  pubsub:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:581.0.0-emulators
+    # entrypoint, not command: Compose clears the image's CMD when entrypoint is
+    # overridden, so this is the whole argv regardless of what the image declares.
+    entrypoint:
+      - gcloud
+      - beta
+      - emulators
+      - pubsub
+      - start
+      - --host-port=0.0.0.0:8085
+      - --project=${GCP_PROJECT_ID:-local-dev}
+    ports:
+      # Loopback-bound: an emulator that enforces no authentication has no
+      # business listening on every interface.
+      - "127.0.0.1:${PUBSUB_EMULATOR_PORT:-8085}:8085"
+    healthcheck:
+      # The emulator speaks gRPC but answers a plain HTTP GET on /, which is
+      # enough to prove the listener is up without adding a probe binary. The
+      # image ships curl.
+      test: ["CMD-SHELL", "curl -sf -o /dev/null http://localhost:8085/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      # Generous for the first `up` on a cold cache — the image is roughly a
+      # gigabyte, so the pull dominates the first start.
+      start_period: 30s
+
+  # fake-gcs-server on its in-memory backend, which is the only backend that
+  # implements object versioning: the filesystem backend answers a bucket
+  # carrying `versioning` with a 500 saying so. In-memory means objects do not
+  # survive a restart — see the persistence overlay in the README if that matters
+  # more to you than versioning does.
+  gcs:
+    image: fsouza/fake-gcs-server:1.55.1
+    depends_on:
+      # Only needed for the object notifications below; harmless without them.
+      pubsub: { condition: service_started }
+    # command, not entrypoint: this image's ENTRYPOINT is already the binary.
+    command:
+      - -scheme
+      - http
+      - -host
+      - 0.0.0.0
+      - -port
+      - "4443"
+      - -backend
+      - memory
+      # Signed URLs are path-style (http://host/bucket/object) and fake-gcs only
+      # routes those when the request's Host matches this — anything else 404s.
+      # So it names the host of whoever *follows* the link, typically a browser
+      # on the host machine, not the one your application calls the API on. Set
+      # it explicitly if you remap the published port below.
+      - -public-host
+      - ${STORAGE_EMULATOR_PUBLIC_HOST:-localhost:4443}
+      # Object events published to the Pub/Sub emulator, reproducing GCS bucket
+      # notifications offline. Declare the topic in your provisioner config:
+      #
+      #   pubsub:
+      #     topics:
+      #       - name: storage-notifications
+      #
+      # Verified against 1.55.1: if the topic does not exist the upload still
+      # answers 200 and the event is dropped, leaving only `error publishing
+      # event: ... NotFound` in this container's log. So a missing topic does not
+      # fail anything loudly — it just means no notifications ever arrive.
+      #
+      # Drop these six arguments if you do not want notifications at all.
+      - -event.pubsub-project-id
+      - ${GCP_PROJECT_ID:-local-dev}
+      - -event.pubsub-topic
+      - ${STORAGE_NOTIFICATIONS_TOPIC:-storage-notifications}
+      # finalize (upload or overwrite), delete, metadataUpdate, archive.
+      - -event.list
+      - ${STORAGE_NOTIFICATIONS_EVENTS:-finalize}
+    environment:
+      PUBSUB_EMULATOR_HOST: pubsub:8085
+    ports:
+      - "127.0.0.1:${STORAGE_EMULATOR_PORT:-4443}:4443"
+    healthcheck:
+      # busybox wget; this image ships no curl.
+      test: ["CMD-SHELL", "wget -q --spider 'http://localhost:4443/storage/v1/b?project=${GCP_PROJECT_ID:-local-dev}' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

@@ -10,7 +10,7 @@ as a one-shot container — either as a Docker Compose init service (via
 
 The name says *emulator* because that is the primary use case: standing up the
 Pub/Sub and Cloud Storage state a local dev stack expects, against
-`gcr.io/google.com/cloudsdktool/cloud-sdk:emulators` and `fsouza/fake-gcs-server`.
+`gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators` and `fsouza/fake-gcs-server`.
 Unlike the sibling provisioners in this ecosystem, which drive the genuine
 article, there is no way to run Google Cloud locally — so the local target is a
 reimplementation, and coping with its gaps is a first-class design concern here.
@@ -50,6 +50,100 @@ docker compose up
 
 This starts both emulators, waits for them to become healthy, provisions
 everything in `config.example.yaml`, and exits 0.
+
+## Reusing the emulator stack
+
+`docker-compose.yaml` is the worked example for this repository. The two upstream
+emulator containers inside it — their pinned images, arguments and healthchecks —
+are also published on their own as
+[docker-compose.emulators.yaml](docker-compose.emulators.yaml), so another project
+does not have to re-derive them.
+
+```yaml
+include:
+  - path: docker-compose.emulators.yaml
+
+services:
+  gcp-emulator-provisioner:
+    image: ghcr.io/datarocks-ag/gcp-emulator-provisioner:latest
+    depends_on:
+      pubsub: { condition: service_healthy }
+      gcs:    { condition: service_healthy }
+    environment:
+      GCP_PROJECT_ID: local-dev
+      PUBSUB_EMULATOR_HOST: pubsub:8085
+      STORAGE_EMULATOR_HOST: gcs:4443
+    volumes:
+      - ./gcp-config.yaml:/config.yaml:ro
+```
+
+`include:` (Compose v2.20+) resolves local paths only — there is no URL form — so
+vendor the file by copy, submodule or subtree. Everything a consumer normally
+changes is an environment variable with a default, so a vendored copy stays
+byte-identical to the original and the next update diffs cleanly instead of
+replaying local edits.
+
+| Variable | Default | Sets |
+|---|---|---|
+| `GCP_PROJECT_ID` | `local-dev` | the emulator project, the notification project, and the storage healthcheck query |
+| `PUBSUB_EMULATOR_PORT` | `8085` | the published host port |
+| `STORAGE_EMULATOR_PORT` | `4443` | the published host port |
+| `STORAGE_EMULATOR_PUBLIC_HOST` | `localhost:4443` | the `Host` that path-style signed URLs must be requested with |
+| `STORAGE_NOTIFICATIONS_TOPIC` | `storage-notifications` | the topic object events are published to |
+| `STORAGE_NOTIFICATIONS_EVENTS` | `finalize` | `finalize`, `delete`, `metadataUpdate`, `archive` |
+
+The container-internal ports are fixed at 8085 and 4443, so `pubsub:8085` and
+`gcs:4443` stay correct inside the network whatever the host publishes.
+
+Both services are bound to `127.0.0.1`, and fake-gcs-server runs on its in-memory
+backend — the only backend that implements versioning.
+
+### Object notifications
+
+fake-gcs-server publishes bucket notifications to the Pub/Sub emulator, which is
+close enough to real GCS notifications to develop against. The topic has to exist:
+declare it in your config like any other.
+
+```yaml
+pubsub:
+  topics:
+    - name: storage-notifications
+```
+
+If it does not, the upload still answers `200` and the event is dropped — the only
+trace is `error publishing event: ... NotFound` in the `gcs` container log. Nothing
+fails loudly; the notifications simply never arrive.
+
+### Persisting objects
+
+The in-memory backend loses every object on restart. Trading versioning away for
+persistence means overriding the whole `gcs` command in your own file, because
+Compose replaces list-valued `command` rather than merging it:
+
+```yaml
+services:
+  gcs:
+    command: ["-scheme", "http", "-host", "0.0.0.0", "-port", "4443",
+              "-backend", "filesystem", "-public-host", "localhost:4443"]
+    volumes:
+      - ./run/mock-storage:/storage
+    # Defaulted, because an unset variable collapses to ":" and the container
+    # runs as root — leaving root-owned files in ./run/mock-storage that the next
+    # run, as a real uid, cannot read. That surfaces as fake-gcs answering 500 to
+    # everything. macOS is typically 501.
+    user: "${STORAGE_EMULATOR_USERID:-1000}:${STORAGE_EMULATOR_GROUPID:-1000}"
+```
+
+A bucket declaring `versioning` then fails against it — see
+[Emulator Caveats](#emulator-caveats).
+
+### Why a fragment and not an image
+
+A derived `gcp-pubsub-emulator` image would make this repository the vendor of an
+artifact it does not own: every gcloud-SDK CVE would wait on a rebuild here before
+reaching you, and the image scan in `release.yaml` would report a wall of findings
+nothing in this repository can fix. The arguments that genuinely differ per stack —
+`-public-host`, the notification topic, the backend — cannot be baked in anyway.
 
 ## Scope
 
@@ -397,10 +491,12 @@ real. `STORAGE_EMULATOR_HOST` is what decides.
 labels and lifecycle rules — the `POST` returns 200 and the bucket never reports
 the policy back. That is why the config schema has no `cors`.
 
-**The Pub/Sub emulator image is amd64-only.** On an arm64 host it runs under
-emulation and takes appreciably longer to start, which is why the Compose
-healthcheck allows a long `start_period` and the integration tests allow a
-five-minute startup.
+**The Pub/Sub emulator image is roughly a gigabyte**, so the first pull dominates
+a cold start — which is why the Compose healthcheck allows a long `start_period`
+and the integration tests allow a five-minute startup. Compose and the tests pin
+`gcr.io/google.com/cloudsdktool/google-cloud-cli:581.0.0-emulators`, the renamed
+`cloud-sdk` repository and the one publishing arm64, so an Apple Silicon host runs
+it natively instead of under emulation.
 
 ## Dry Run
 

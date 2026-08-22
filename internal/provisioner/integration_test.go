@@ -18,16 +18,28 @@ import (
 
 const testProject = "local-dev"
 
+// Pinned, because a floating tag lets an upstream release break CI with no local
+// commit to blame. Keep in step with docker-compose.yaml and
+// docker-compose.emulators.yaml.
+//
+// google-cloud-cli is the renamed cloud-sdk repository and the one that publishes
+// arm64, so the emulator runs natively on an Apple Silicon host instead of under
+// emulation.
+const (
+	pubSubEmulatorImage = "gcr.io/google.com/cloudsdktool/google-cloud-cli:581.0.0-emulators"
+	fakeGCSImage        = "fsouza/fake-gcs-server:1.55.1"
+)
+
 // startPubSubEmulator boots the gcloud Pub/Sub emulator and returns its host:port.
 //
-// The image is published for amd64 only, so on arm64 hosts it runs under
-// emulation and needs a generous startup timeout.
+// The startup timeout stays generous: the image is roughly a gigabyte, so a cold
+// cache dominates the first run.
 func startPubSubEmulator(t *testing.T) string {
 	t.Helper()
 
 	ctx := context.Background()
 	req := testcontainers.ContainerRequest{
-		Image:        "gcr.io/google.com/cloudsdktool/cloud-sdk:emulators",
+		Image:        pubSubEmulatorImage,
 		ExposedPorts: []string{"8085/tcp"},
 		Cmd: []string{
 			"gcloud", "beta", "emulators", "pubsub", "start",
@@ -63,7 +75,7 @@ func startFakeGCS(t *testing.T) string {
 
 	ctx := context.Background()
 	req := testcontainers.ContainerRequest{
-		Image:        "fsouza/fake-gcs-server:latest",
+		Image:        fakeGCSImage,
 		ExposedPorts: []string{"4443/tcp"},
 		Cmd:          []string{"-scheme", "http", "-host", "0.0.0.0", "-port", "4443", "-backend", "memory"},
 		WaitingFor:   wait.ForListeningPort("4443/tcp").WithStartupTimeout(2 * time.Minute),

@@ -58,8 +58,12 @@ go test -race -run TestEnsureTopic ./internal/provisioner/        # single test
   (`pubsub_server_test.go`). Both mirror emulator behaviour deliberately — fabricated
   `US-CENTRAL1`/`STANDARD`, and a mask validated in full before anything is applied. Extend the
   fakes rather than dropping back to integration-only coverage
-- The Pub/Sub emulator image is **amd64-only**. On an arm64 host each integration test spends
-  ~15s booting it under emulation; the full Pub/Sub suite takes around 80s
+- The Pub/Sub emulator image is **roughly a gigabyte**, so a cold pull dominates the first
+  integration run. Tests and compose pin `google-cloud-cli:581.0.0-emulators` — the renamed
+  `cloud-sdk` repository, and the one publishing arm64, so it no longer runs under emulation on
+  an Apple Silicon host. The pins live in `pubSubEmulatorImage` / `fakeGCSImage` in
+  `integration_test.go`, `docker-compose.yaml` and `docker-compose.emulators.yaml`; move all three
+  together
 
 ## Architecture
 
@@ -211,8 +215,9 @@ re-sends each path alone. One RPC in the common case, `1 + N` only when a gap is
 
 Do not replace this by parsing the field name out of the error text: the two known messages have
 different shapes, only one names the field in a fixed position, a batch can contain two refused
-paths, and both emulator images are unpinned. Do not partition by a hardcoded unsupported set
-either — that bakes emulator knowledge into the reconciler and misses any gap not yet catalogued.
+paths, and the image pin only fixes the wording until the next bump. Do not partition by a
+hardcoded unsupported set either — that bakes emulator knowledge into the reconciler and misses
+any gap not yet catalogued.
 The emulator returns the *same* text for a single-path mask as for a batch, which is what makes
 the retry safe; if that ever changes, the retry would turn a warning into a fatal error.
 
@@ -352,8 +357,9 @@ authorization error looks identical to an outage for five minutes.
 - GoReleaser runs on tags only, and emits one archive per binary so a stack that needs only the
   stub does not download the provisioner as well
 - There is no plain-push CI on `develop`/`main` — work lands on prefixed branches via PR
-- Both emulator images are unpinned in tests and compose, so upstream changes can break CI
-  without any local change
+- Both emulator images are pinned in tests and compose, so an upstream release cannot break CI
+  without a local commit. Dependabot does not track them — bumping is manual, and the emulator
+  behaviour catalogued above is worth re-verifying when it happens
 
 ## Project-Specific Notes
 
@@ -374,7 +380,7 @@ authorization error looks identical to an outage for five minutes.
   | GCS `uniform_bucket_level_access`, `public_access_prevention`, ACLs | The IAM boundary above |
   | GCS `labels`, `lifecycle`, `cors` | Accepted and discarded by fake-gcs-server — drift never converges |
   | `subscription.detached` | Driven by the `DetachSubscription` RPC, not a declarative setting |
-- The Compose healthchecks are verified against the images: `cloud-sdk:emulators` ships `curl`
-  and the emulator answers a plain HTTP `GET /` with 200 despite speaking gRPC;
-  `fake-gcs-server` ships `wget` but **not** `curl`.
-- `pubsub` in Compose needs a long `start_period` because of the amd64-only image.
+- The Compose healthchecks are verified against the pinned images:
+  `google-cloud-cli:581.0.0-emulators` ships `curl` and the emulator answers a plain HTTP `GET /`
+  with 200 despite speaking gRPC; `fake-gcs-server:1.55.1` ships `wget` but **not** `curl`.
+- `pubsub` in Compose needs a long `start_period` because the image is roughly a gigabyte.
