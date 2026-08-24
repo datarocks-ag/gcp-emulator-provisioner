@@ -3,11 +3,11 @@ module gcp-emulator-provisioner
 go 1.25.8
 
 require (
-	cloud.google.com/go/pubsub/v2 v2.6.1
-	cloud.google.com/go/storage v1.64.0
+	cloud.google.com/go/pubsub/v2 v2.6.2
+	cloud.google.com/go/storage v1.65.0
 	github.com/testcontainers/testcontainers-go v0.44.0
 	google.golang.org/api v0.293.0
-	google.golang.org/grpc v1.83.0
+	google.golang.org/grpc v1.83.1
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
 )
