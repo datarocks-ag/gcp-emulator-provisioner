@@ -49,14 +49,14 @@ jobs:
         run: go test -race -coverprofile=cover.out ./...
 
       - name: Check test coverage
-        uses: vladopajic/go-test-coverage@v2
+        uses: vladopajic/go-test-coverage@v2201
         with:
           config: ./.testcoverage.yml
           git-token: ${{ github.ref_name == 'develop' && secrets.GITHUB_TOKEN || '' }}
           git-branch: badges
 
       - name: Create and publish test coverage badge
-        uses: vladopajic/go-test-coverage@v2
+        uses: vladopajic/go-test-coverage@v2201
         with:
           profile: cover.out
           threshold-total: 75
