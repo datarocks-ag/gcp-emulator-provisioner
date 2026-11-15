@@ -37,6 +37,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **How-to guides and an FAQ for operators.** Fourteen task-focused guides under
+  [docs/howto/](docs/howto/) — from wiring the emulators into a Compose project to
+  running against real Google Cloud — and [docs/faq.md](docs/faq.md) with the
+  questions and error messages people hit. The README gains a Documentation table
+  linking them. Every example config loads, and the output shown was captured
+  against `google-cloud-cli:593.0.0-emulators` and `fake-gcs-server:1.56.1` unless
+  marked otherwise.
+
+  The README and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) are corrected where
+  they disagreed with the code: credentials in a full run are written only after
+  both emulators answer; `strategy: update` on a credential regenerates the key on
+  every run while set; the token stub answers 405 to other methods on `/token`; the
+  README's `token_uri` example used a port the stub does not listen on; a
+  `push_wrapper` or OIDC token set out of band is dropped by the next push update;
+  `dead_letter` and `retry` need every value set to converge; `archive` is not a
+  fake-gcs-server notification event; unknown config keys are ignored rather than
+  rejected; exit code 2 for an unknown flag.
+
 - **Both emulator images are now pinned** in `docker-compose.yaml` and the
   integration tests, which previously floated on `cloud-sdk:emulators` and
   `fake-gcs-server:latest`. An upstream release could break CI with no local
