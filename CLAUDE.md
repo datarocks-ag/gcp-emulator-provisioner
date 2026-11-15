@@ -278,6 +278,12 @@ would otherwise delete every attribute set out of band. The push wrapper needs o
 before comparing, never the desired one, or `push_wrapper: pubsub` would drift forever against an
 endpoint that does not echo a wrapper back.
 
+The dead letter and retry policies follow the same rule per value. Pub/Sub fills an omitted
+`max_delivery_attempts` or backoff with its own default and reports it back, so `deadLetterEqual` /
+`retryEqual` compare only the values the config sets, and `mergeDeadLetter` / `mergeRetry` carry
+the live values across before an update. Comparing the whole struct once updated the subscription
+on every run without converging — measured against the emulator.
+
 ### Range validation belongs in the config layer
 
 The emulator accepts durations Google Cloud rejects, so a config exercised only locally would

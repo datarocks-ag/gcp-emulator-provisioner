@@ -24,9 +24,9 @@ them, and you want the same setup locally and in Google Cloud.
 - **The provisioner only creates what you declare.** It never creates a topic it was not asked for,
   so the dead letter topic must be listed under `pubsub.topics` itself. It may come later in the
   file: every topic is created before any subscription. See [Ordering](../../README.md#ordering).
-- **Omitted fields are filled in by Pub/Sub.** If you leave a value out, Pub/Sub stores its own
-  default, and the provisioner then sees a difference on every run. The [Pitfalls](#pitfalls) show
-  what that looks like.
+- **Omitted values are filled in by Pub/Sub.** If you leave `max_delivery_attempts` or a backoff
+  out, Pub/Sub stores its own default. The provisioner compares only the values you set, so the
+  default is not reported as drift, and a later update keeps it.
 
 ## Steps
 
@@ -59,9 +59,8 @@ pubsub:
           expiration_ttl: never
 ```
 
-Set all three values, `max_delivery_attempts`, `minimum_backoff` and `maximum_backoff`, even when
-you are happy with Pub/Sub's defaults. That is what makes the second run a no-op (see
-[Pitfalls](#pitfalls)).
+Setting all three values, `max_delivery_attempts`, `minimum_backoff` and `maximum_backoff`, makes
+the policy explicit in the config. You can leave any of them out to accept Pub/Sub's default.
 
 The values are checked when the config loads, against the ranges Google Cloud accepts, so a config
 that passes locally does not fail later in Google Cloud:
@@ -228,19 +227,10 @@ The three-second pause between pulls fits the 1s–60s backoff in the example. W
 
 ## Pitfalls
 
-- **`Updating subscription` on every run.** You left out `max_delivery_attempts`, or set only one
-  of `minimum_backoff` / `maximum_backoff`. Pub/Sub stores its default for the missing value (the
-  emulator reports 5 attempts and a 600s maximum backoff), the provisioner compares it against the
-  config's empty value, and sends the update again on the next run. Measured against the emulator
-  with a dead letter policy that has no `max_delivery_attempts` and a retry policy that has only
-  `minimum_backoff: 10s`, every run after the first logs:
-
-  ```json
-  {"level":"INFO","msg":"Updating subscription","subscription":"payment-processor","fields":["dead_letter_policy","retry_policy"]}
-  ```
-
-  The run still exits 0, so nothing fails; it never settles either. Set all three values
-  explicitly.
+- **Removing a value does not reset it.** Deleting `max_delivery_attempts` or a backoff from the
+  config leaves the live value as it is, the same as every other omitted field. To go back to
+  Pub/Sub's default, write the default value explicitly (the emulator reports 5 attempts and a
+  600s maximum backoff).
 - **Dead lettered messages vanish.** The dead letter topic has no subscription. Pub/Sub only keeps
   a message for subscriptions that exist when it is published, so declare one, as
   `orders-dlq-inspector` above.

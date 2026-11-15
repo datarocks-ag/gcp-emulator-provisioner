@@ -420,10 +420,9 @@ stops a config from passing against the emulator and failing in production.
 `ack_deadline_seconds`: `10s500ms` would be truncated on the wire, read back as
 `10s`, and then reported as drift on every subsequent run.
 
-Set `max_delivery_attempts` whenever you set `dead_letter`, and both backoffs
-whenever you set `retry`. A value left out is sent as zero, Pub/Sub fills in its
-own default, and the next run sees the difference and updates the subscription
-again — on every run.
+`max_delivery_attempts` and the two backoffs may be left out: Pub/Sub then uses
+its own defaults. An omitted value is not compared, and when another dead letter
+or retry setting changes, the live value is carried across rather than reset.
 
 ### Push subscriptions
 

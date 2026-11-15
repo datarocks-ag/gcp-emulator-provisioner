@@ -223,10 +223,6 @@ $ curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8085/v1/projects/loc
   Google Cloud accepts (labels, and a subscription's `expiration_policy`). A dry run lists them
   under `fields` as if they would apply; only the real run discovers the refusal and logs a
   warning. See [Emulator Caveats](../../README.md#emulator-caveats).
-- **A dry run that keeps showing the same update.** If `dead_letter` is set without
-  `max_delivery_attempts`, or `retry` without both `minimum_backoff` and `maximum_backoff`, the
-  emulator fills in its own defaults and every run — real or dry — reports `dead_letter_policy`
-  or `retry_policy` again. Set all of those values explicitly.
 - **`strategy: create` hides changes.** A resource under `create` that already exists is logged
   as `Skipping existing … (strategy=create)` with no diff, in a dry run as in a real one.
 - **`--help` is incomplete.** The help text for `--section` lists `pubsub`, `storage` and `all`

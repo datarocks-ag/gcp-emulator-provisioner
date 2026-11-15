@@ -105,8 +105,8 @@ pubsub:
     - name: orders-dlq
 ```
 
-Set `max_delivery_attempts` explicitly: if you leave it out, the emulator fills in its own default
-and the provisioner reports `dead_letter_policy` as changed on every run.
+`max_delivery_attempts` is optional; left out, Pub/Sub uses its default of 5, and the provisioner
+does not report that as a change.
 
 Further reading: [Route failed messages to a dead letter topic](howto/route-failed-messages-to-a-dead-letter-topic.md),
 [Ordering](../README.md#ordering)

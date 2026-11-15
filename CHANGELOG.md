@@ -50,7 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every run while set; the token stub answers 405 to other methods on `/token`; the
   README's `token_uri` example used a port the stub does not listen on; a
   `push_wrapper` or OIDC token set out of band is dropped by the next push update;
-  `dead_letter` and `retry` need every value set to converge; `archive` is not a
+  `archive` is not a
   fake-gcs-server notification event; unknown config keys are ignored rather than
   rejected; exit code 2 for an unknown flag.
 
@@ -88,6 +88,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its key was held up by slow emulators, and got no key at all if one never came
   up. Key files are now written first, as the documentation always said.
   `Provisioner.Run` is gone; `main.go` sequences the sections.
+- **`dead_letter` and `retry` converge when a value is left out.** An omitted
+  `max_delivery_attempts` or backoff was compared as zero against the default
+  Pub/Sub fills in, so the subscription was updated on every run. Those values are
+  now compared only when set, and carried across from the live policy when another
+  dead letter or retry setting changes, the same way labels are.
 
 ## [2.0.1] - 2026-08-18
 

@@ -77,6 +77,8 @@ func (p *Provisioner) ensureSubscription(ctx context.Context, topicName string, 
 	if desired.Push != nil && current.Push != nil {
 		desired.Push.Attributes = mergeLabels(current.Push.Attributes, desired.Push.Attributes)
 	}
+	desired.DeadLetter = mergeDeadLetter(current.DeadLetter, desired.DeadLetter)
+	desired.Retry = mergeRetry(current.Retry, desired.Retry)
 
 	slog.Info("Updating subscription", "subscription", sub.Name, "fields", paths)
 	return applyPaths(ctx, paths,
@@ -308,16 +310,57 @@ func effectiveWrapper(w client.Wrapper) client.Wrapper {
 	return w
 }
 
-func deadLetterEqual(a, b *client.DeadLetterPolicy) bool {
-	if a == nil || b == nil {
-		return a == b
+// deadLetterEqual compares the dead letter policy subset-wise. An omitted
+// max_delivery_attempts is filled with Pub/Sub's own default and reported back,
+// so comparing it against the zero the config implies would never converge.
+func deadLetterEqual(current, desired *client.DeadLetterPolicy) bool {
+	if current == nil || desired == nil {
+		return current == desired
 	}
-	return *a == *b
+	if desired.Topic != current.Topic {
+		return false
+	}
+	return desired.MaxDeliveryAttempts == 0 || desired.MaxDeliveryAttempts == current.MaxDeliveryAttempts
 }
 
-func retryEqual(a, b *client.RetryPolicy) bool {
-	if a == nil || b == nil {
-		return a == b
+// retryEqual compares the retry policy subset-wise, for the same reason as
+// deadLetterEqual: an omitted backoff comes back as the Pub/Sub default.
+func retryEqual(current, desired *client.RetryPolicy) bool {
+	if current == nil || desired == nil {
+		return current == desired
 	}
-	return *a == *b
+	if desired.MinimumBackoff != 0 && desired.MinimumBackoff != current.MinimumBackoff {
+		return false
+	}
+	return desired.MaximumBackoff == 0 || desired.MaximumBackoff == current.MaximumBackoff
+}
+
+// mergeDeadLetter fills the values the config omits from the live policy. The
+// update mask replaces the whole policy, so an omitted value sent as zero would
+// reset a live setting to the Pub/Sub default.
+func mergeDeadLetter(current, desired *client.DeadLetterPolicy) *client.DeadLetterPolicy {
+	if current == nil || desired == nil {
+		return desired
+	}
+	merged := *desired
+	if merged.MaxDeliveryAttempts == 0 {
+		merged.MaxDeliveryAttempts = current.MaxDeliveryAttempts
+	}
+	return &merged
+}
+
+// mergeRetry fills the backoffs the config omits from the live policy, for the
+// same reason as mergeDeadLetter.
+func mergeRetry(current, desired *client.RetryPolicy) *client.RetryPolicy {
+	if current == nil || desired == nil {
+		return desired
+	}
+	merged := *desired
+	if merged.MinimumBackoff == 0 {
+		merged.MinimumBackoff = current.MinimumBackoff
+	}
+	if merged.MaximumBackoff == 0 {
+		merged.MaximumBackoff = current.MaximumBackoff
+	}
+	return &merged
 }
