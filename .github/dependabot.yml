@@ -33,6 +33,13 @@ updates:
         update-types:
           - minor
           - patch
+      # Security updates mostly hit indirect dependencies pulled in by
+      # testcontainers, the Google Cloud SDKs and the golangci-lint tool (otel,
+      # moby, x/crypto). One PR per CVE conflicts on go.sum, so batch them.
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   # The actions used by ci.yaml and release.yaml. These drift quietly and are
   # the most likely thing to break a pipeline that nobody touched.
@@ -45,12 +52,17 @@ updates:
       timezone: Europe/Zurich
     open-pull-requests-limit: 5
     groups:
+      # Actions don't pin each other, and nearly every bump is a major (Node
+      # runtime), so majors are grouped too. CI exercises them all, so one PR is
+      # enough to review.
       github-actions:
         patterns:
           - "*"
-        update-types:
-          - minor
-          - patch
+    ignore:
+      # Dependabot proposed a non-existent major "v2201" for this action (#26).
+      # `@v2` already floats to the latest v2.x; a real major needs manual review.
+      - dependency-name: "vladopajic/go-test-coverage"
+        update-types: ["version-update:semver-major"]
 
   # Builder base images in Dockerfile and Dockerfile.token-stub. The final
   # stages are `scratch`, which has nothing to update.
