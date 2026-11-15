@@ -221,6 +221,11 @@ any gap not yet catalogued.
 The emulator returns the *same* text for a single-path mask as for a batch, which is what makes
 the retry safe; if that ever changes, the retry would turn a warning into a fatal error.
 
+**An invalid `filter` is a third case, and it stays fatal.** The emulator answers a filter it
+cannot parse with an internal error that the client retries until its 60s deadline, so the run
+fails with a bare `DeadlineExceeded`. `annotateFilterError` adds a hint when the subscription has a
+filter; it does not downgrade anything, because the subscription genuinely was not created.
+
 ### fake-gcs-server is far more limited than it looks
 
 Verified against `fsouza/fake-gcs-server:latest`:
@@ -271,9 +276,11 @@ labels would delete every label the provisioner does not manage. Same hazard as
 `seaweedfs-provisioner`'s lifecycle merge.
 
 `push_config` has the same shape one level down. `pushConfigEqual` compares only what the config
-declares, and the push attributes are merged in `ensureSubscription` alongside the labels —
-the mask replaces the whole `push_config` message, so an update triggered by a drifted endpoint
-would otherwise delete every attribute set out of band. The push wrapper needs one extra guard:
+declares — including the OIDC `audience`, which Pub/Sub defaults to the endpoint — and
+`mergePushConfig` carries every omitted push setting across before an update: attributes, the
+wrapper with its `write_metadata`, the OIDC token and its audience. The mask replaces the whole
+`push_config` message, so an update triggered by a drifted endpoint would otherwise delete
+everything set out of band. The push wrapper needs one extra guard:
 `effectiveWrapper` resolves an unset **live** wrapper to `WrapperPubSub` (the Pub/Sub default)
 before comparing, never the desired one, or `push_wrapper: pubsub` would drift forever against an
 endpoint that does not echo a wrapper back.

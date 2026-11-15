@@ -197,14 +197,12 @@ example, the `Content-Type` and the extra `Authorization` header with `push_oidc
 - **Nothing arrives at the consumer.** The endpoint is resolved by the emulator, not by your host.
   `http://localhost:8080` points at the emulator container itself; use the Compose service name. The
   emulator keeps retrying a failing endpoint, so the message arrives once the consumer is up.
-- **A wrapper or OIDC token set by hand disappears.** Push attributes added outside the config are
-  carried across an update. A `push_wrapper` or `push_oidc_token` added outside the config is not:
-  it stays only until some push setting in the config changes, and that update sends the config's
-  `push_config` without it. Measured against the emulator: a subscription whose config declares
-  only `push_endpoint` and `push_attributes` was given an extra attribute, an OIDC token and
-  `noWrapper` by hand. After the endpoint was changed in the config, the next run logged
-  `"fields":["push_config"]` and the subscription kept the extra attribute but lost the token and
-  the wrapper. Declare every push setting you rely on in the config.
+- **Removing a push setting from the config does not remove it.** Attributes, a wrapper or an
+  OIDC token that the config leaves out are carried across every update, the same way labels are.
+  Measured against the emulator: a subscription created with `push_wrapper: none`,
+  `push_write_metadata: true` and an OIDC token kept all three after a config that declared only a
+  new `push_endpoint` was applied; the run after that logged `Subscription up to date`. To change
+  one of them, declare the new value in the config.
 - **The consumer works locally and gets `401` or `403` in Google Cloud.** The emulator sends no
   token, so authentication code on the consumer is never exercised locally. In Google Cloud, Pub/Sub
   also needs permission to create tokens for the service account; the provisioner manages no

@@ -233,6 +233,9 @@ func wants(section, want string) bool {
 // config file. Every resource is namespaced by it, so there is no default.
 func resolveProjectID(cfg *config.Config) (string, error) {
 	if id := os.Getenv("GCP_PROJECT_ID"); id != "" {
+		if err := config.ValidateProjectID(id); err != nil {
+			return "", fmt.Errorf("GCP_PROJECT_ID: %w", err)
+		}
 		return id, nil
 	}
 	if cfg.ProjectID != "" {

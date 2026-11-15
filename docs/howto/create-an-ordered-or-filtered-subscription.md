@@ -187,14 +187,15 @@ Only the `order.created` message is delivered; the filter dropped the other one.
   `"remedy":"delete the subscription by hand if the new value is required"`.
 - **The run hangs for about a minute, then fails with `context deadline exceeded`.** The filter
   has a syntax error. The emulator does not reject it cleanly: it answers with an internal error,
-  the client retries until its deadline, and the subscription is not created. Measured with
+  the client retries until its deadline, and the subscription is not created. The provisioner
+  adds a hint to the error when the subscription has a filter. Measured with
   `filter: 'attributes.type = order.created'` (the value is not quoted):
 
   ```json
-  {"level":"ERROR","msg":"Provisioning failed","error":"provisioning subscription \"order-badfilter\" on topic \"orders\": creating subscription \"order-badfilter\": context deadline exceeded"}
+  {"level":"ERROR","msg":"Provisioning failed","error":"provisioning subscription \"order-badfilter\" on topic \"orders\": creating subscription \"order-badfilter\": context deadline exceeded (the subscription has a filter: the Pub/Sub emulator answers an invalid filter expression by timing out, so check the filter syntax, and the emulator's log for FilterExpressionParser)"}
   ```
 
-  The actual reason is only in the `pubsub` container's log (`docker compose logs pubsub`):
+  The exact reason is in the `pubsub` container's log (`docker compose logs pubsub`):
 
   ```text
   [pubsub] com.google.cloud.pubsub.testing.v1.FilterExpressionParser$ParserException: Unexpected token: 'order' at position 18: Expected a string literal.

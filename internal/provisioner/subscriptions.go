@@ -43,7 +43,7 @@ func (p *Provisioner) ensureSubscription(ctx context.Context, topicName string, 
 		}
 
 		slog.Info("Creating subscription", "subscription", sub.Name, "topic", topicName)
-		return p.pubsub.CreateSubscription(ctx, desired)
+		return annotateFilterError(p.pubsub.CreateSubscription(ctx, desired), desired.Filter)
 	}
 
 	if strategy == "create" {
@@ -72,11 +72,7 @@ func (p *Provisioner) ensureSubscription(ctx context.Context, topicName string, 
 	}
 
 	desired.Labels = mergeLabels(current.Labels, desired.Labels)
-	// The mask replaces the whole push_config, so push attributes set out of band
-	// have to be carried across for the same reason labels do.
-	if desired.Push != nil && current.Push != nil {
-		desired.Push.Attributes = mergeLabels(current.Push.Attributes, desired.Push.Attributes)
-	}
+	desired.Push = mergePushConfig(current.Push, desired.Push)
 	desired.DeadLetter = mergeDeadLetter(current.DeadLetter, desired.DeadLetter)
 	desired.Retry = mergeRetry(current.Retry, desired.Retry)
 
@@ -89,6 +85,20 @@ func (p *Provisioner) ensureSubscription(ctx context.Context, topicName string, 
 			slog.Warn("Subscription field not supported by this Pub/Sub endpoint, leaving it unchanged",
 				"subscription", sub.Name, "field", path, "error", err)
 		})
+}
+
+// annotateFilterError names the likely cause when creating a filtered
+// subscription times out. The Pub/Sub emulator answers an invalid filter
+// expression with an internal error that the client retries until its deadline,
+// so the run otherwise fails a minute later with a bare deadline error and the
+// real reason only in the emulator's own log.
+func annotateFilterError(err error, filter string) error {
+	if err == nil || filter == "" || !client.IsTimeout(err) {
+		return err
+	}
+	return fmt.Errorf("%w (the subscription has a filter: the Pub/Sub emulator answers an invalid "+
+		"filter expression by timing out, so check the filter syntax, and the emulator's log for "+
+		"FilterExpressionParser)", err)
 }
 
 // buildSubscription converts a config.Subscription into the transport-neutral form.
@@ -289,11 +299,44 @@ func pushConfigEqual(current, desired *client.PushConfig) bool {
 
 // oidcEqual compares the push authentication. A config that declares no token
 // leaves whatever is on the subscription alone, matching every other omitted field.
+// An omitted audience is defaulted by Pub/Sub, so it is not compared either.
 func oidcEqual(current, desired *client.OIDCToken) bool {
 	if desired == nil {
 		return true
 	}
-	return current != nil && *current == *desired
+	if current == nil || current.ServiceAccountEmail != desired.ServiceAccountEmail {
+		return false
+	}
+	return desired.Audience == "" || desired.Audience == current.Audience
+}
+
+// mergePushConfig carries the push settings the config leaves out across from
+// the live push config. The update mask replaces the whole push_config message,
+// so anything not carried across — attributes, the wrapper, the OIDC token or
+// its audience — would be dropped by an update triggered for another reason.
+func mergePushConfig(current, desired *client.PushConfig) *client.PushConfig {
+	if current == nil || desired == nil {
+		return desired
+	}
+	merged := *desired
+	merged.Attributes = mergeLabels(current.Attributes, desired.Attributes)
+
+	if merged.Wrapper == client.WrapperUnset {
+		merged.Wrapper = current.Wrapper
+		merged.WriteMetadata = current.WriteMetadata
+	}
+
+	switch {
+	case merged.OIDCToken == nil && current.OIDCToken != nil:
+		token := *current.OIDCToken
+		merged.OIDCToken = &token
+	case merged.OIDCToken != nil && merged.OIDCToken.Audience == "" &&
+		current.OIDCToken != nil && current.OIDCToken.ServiceAccountEmail == merged.OIDCToken.ServiceAccountEmail:
+		token := *merged.OIDCToken
+		token.Audience = current.OIDCToken.Audience
+		merged.OIDCToken = &token
+	}
+	return &merged
 }
 
 // effectiveWrapper resolves a live wrapper for comparison. Pub/Sub defaults an

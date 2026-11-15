@@ -39,9 +39,9 @@ A project id is required even though nothing is provisioned. Either the config s
 {"level":"ERROR","msg":"Provisioning failed","error":"project id is required: set GCP_PROJECT_ID or project_id in the config file"}
 ```
 
-`project_id` in the file is checked against Google Cloud's format (6–30 characters, lowercase
-letters, digits and hyphens, starting with a letter). `GCP_PROJECT_ID` is not checked at all, so
-pass the same value you use in the real run.
+`project_id` in the file and `GCP_PROJECT_ID` are both checked against Google Cloud's format
+(6–30 characters, lowercase letters, digits and hyphens, starting with a letter). Pass the same
+value you use in the real run.
 
 ### 2. Run the credentials section in dry-run mode
 
@@ -185,9 +185,12 @@ value and the command exits with `0` again.
   syntax, whether a `push_endpoint` answers, whether a service account in `push_oidc_token`
   exists, or whether the identity of a real run is allowed to create anything. Those surface only
   in a real run, or in a dry run against the endpoint.
-- **A bad `GCP_PROJECT_ID` passes.** Only `project_id` in the file is format-checked; an invalid
-  value in the environment variable is accepted here and rejected later by Pub/Sub or Cloud
-  Storage.
+- **An invalid `GCP_PROJECT_ID` fails before the config is used.** The variable overrides
+  `project_id`, so it is checked the same way, and the error names it:
+
+  ```json
+  {"level":"ERROR","msg":"Provisioning failed","error":"GCP_PROJECT_ID: invalid project id \"Local_Dev\" (must be 6-30 chars, lowercase letters, digits and hyphens, starting with a letter)"}
+  ```
 
 ## Further reading
 

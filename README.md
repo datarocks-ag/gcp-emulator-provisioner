@@ -355,7 +355,9 @@ running against a stack with only fake-gcs-server needs no Pub/Sub endpoint.
 | `DRY_RUN` | no | `false` | Set to `true` to log every mutation as a preview without applying it. Parsed with Go's `strconv.ParseBool` (`1`, `t`, `TRUE` … also work); anything else fails the run |
 | `LOG_LEVEL` | no | `info` | Log level (debug/info/warn/error) |
 
-`GCP_PROJECT_ID` takes precedence over `project_id` in the config file.
+`GCP_PROJECT_ID` takes precedence over `project_id` in the config file. Both are
+checked against Google Cloud's project id format, even when the target is an
+emulator, so a config that runs locally runs unchanged against Google Cloud.
 
 ## CLI Flags
 
@@ -442,11 +444,11 @@ push_wrapper: none               # "pubsub" (default envelope) | "none" (raw pay
 push_write_metadata: true        # X-Goog-Pubsub-* headers; only with push_wrapper: none
 ```
 
-The update mask replaces the whole `push_config` message. Push attributes already
-set out of band are carried across an update, the same way labels are. A
-`push_wrapper` or `push_oidc_token` set out of band is not: omitting them from the
-config leaves them alone only until some other push setting changes, and that
-update sends the config's `push_config` without them.
+The update mask replaces the whole `push_config` message, so every push setting
+the config leaves out is carried across from the live subscription when an update
+is sent: push attributes (merged, the same way labels are), the wrapper, the OIDC
+token, and the token's `audience`. An omitted `audience` is not compared either,
+so Pub/Sub's default does not show up as drift.
 
 Neither emulator validates the service account, so `push_oidc_token` is inert
 locally and only takes effect against Google Cloud.

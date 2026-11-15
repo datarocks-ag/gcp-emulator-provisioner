@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -43,6 +44,7 @@ type mockPubSub struct {
 
 	updateTopicErr error
 	updateSubErr   error
+	createSubErr   error
 
 	// unsupported*Paths make this endpoint refuse specific mask paths, the way
 	// the Pub/Sub emulator refuses `labels`. sub/topicUpdateCalls record every
@@ -131,6 +133,9 @@ func (m *mockPubSub) GetSubscription(_ context.Context, name string) (*client.Su
 }
 
 func (m *mockPubSub) CreateSubscription(_ context.Context, s client.Subscription) error {
+	if m.createSubErr != nil {
+		return m.createSubErr
+	}
 	m.createdSubs = append(m.createdSubs, s)
 	copied := s
 	m.subs[s.Name] = &copied
@@ -840,6 +845,168 @@ func TestOmittedDeadLetterAndRetryValuesSurviveAnUpdate(t *testing.T) {
 	}
 	if got := sent.Retry; got.MinimumBackoff != 20*time.Second || got.MaximumBackoff != 300*time.Second {
 		t.Errorf("retry policy sent = %+v, want minimum 20s with live maximum 300s", *got)
+	}
+}
+
+// The mask replaces the whole push_config, so a wrapper or OIDC token the config
+// does not mention has to be carried across, or an endpoint change silently
+// drops it — the same hazard as push attributes and labels.
+func TestPushWrapperAndOIDCTokenPreservedOnEndpointChange(t *testing.T) {
+	ps := newMockPubSub()
+	ps.topics["orders"] = &client.Topic{Name: "orders"}
+	ps.subs["webhook"] = &client.Subscription{
+		Name: "webhook", Topic: "orders", AckDeadline: 10 * time.Second,
+		Push: &client.PushConfig{
+			Endpoint:      "http://old:8080/events",
+			OIDCToken:     &client.OIDCToken{ServiceAccountEmail: "pusher@local-dev.iam.gserviceaccount.com", Audience: "consumer"},
+			Wrapper:       client.WrapperNone,
+			WriteMetadata: true,
+		},
+	}
+
+	cfg := &config.Config{PubSub: config.PubSub{Topics: []config.Topic{{
+		Name: "orders",
+		Subscriptions: []config.Subscription{{
+			Name: "webhook", AckDeadline: "10s",
+			PushEndpoint: "http://new:8080/events",
+		}},
+	}}}}
+
+	p := New(ps, nil, cfg, DefaultOptions())
+	if err := p.ProvisionPubSub(context.Background()); err != nil {
+		t.Fatalf("ProvisionPubSub: %v", err)
+	}
+
+	if len(ps.updatedSubs) != 1 {
+		t.Fatalf("got %d updates, want 1", len(ps.updatedSubs))
+	}
+	sent := ps.updatedSubs[0].sub.Push
+	if sent.Endpoint != "http://new:8080/events" {
+		t.Errorf("endpoint sent = %q, want the configured one", sent.Endpoint)
+	}
+	if sent.Wrapper != client.WrapperNone || !sent.WriteMetadata {
+		t.Errorf("wrapper set out of band was dropped: wrapper=%v write_metadata=%v", sent.Wrapper, sent.WriteMetadata)
+	}
+	if sent.OIDCToken == nil || sent.OIDCToken.Audience != "consumer" {
+		t.Errorf("oidc token set out of band was dropped: %+v", sent.OIDCToken)
+	}
+}
+
+// An omitted audience is defaulted by Pub/Sub. Comparing it against the empty
+// value the config implies would report drift on every run wherever the
+// endpoint echoes the default back.
+func TestOmittedPushAudienceIsNotDrift(t *testing.T) {
+	ps := newMockPubSub()
+	ps.topics["orders"] = &client.Topic{Name: "orders"}
+	ps.subs["webhook"] = &client.Subscription{
+		Name: "webhook", Topic: "orders", AckDeadline: 10 * time.Second,
+		Push: &client.PushConfig{
+			Endpoint: "http://consumer:8080/events",
+			OIDCToken: &client.OIDCToken{
+				ServiceAccountEmail: "pusher@local-dev.iam.gserviceaccount.com",
+				Audience:            "http://consumer:8080/events",
+			},
+		},
+	}
+
+	cfg := &config.Config{PubSub: config.PubSub{Topics: []config.Topic{{
+		Name: "orders",
+		Subscriptions: []config.Subscription{{
+			Name: "webhook", AckDeadline: "10s",
+			PushEndpoint:  "http://consumer:8080/events",
+			PushOIDCToken: &config.PushOIDCToken{ServiceAccountEmail: "pusher@local-dev.iam.gserviceaccount.com"},
+		}},
+	}}}}
+
+	p := New(ps, nil, cfg, DefaultOptions())
+	if err := p.ProvisionPubSub(context.Background()); err != nil {
+		t.Fatalf("ProvisionPubSub: %v", err)
+	}
+
+	if len(ps.updatedSubs) != 0 {
+		t.Errorf("an omitted audience was treated as drift: %v", ps.updatedSubs[0].paths)
+	}
+}
+
+// When the push config is updated for another reason, an omitted audience keeps
+// the live one rather than resetting it.
+func TestOmittedPushAudienceSurvivesAnUpdate(t *testing.T) {
+	ps := newMockPubSub()
+	ps.topics["orders"] = &client.Topic{Name: "orders"}
+	ps.subs["webhook"] = &client.Subscription{
+		Name: "webhook", Topic: "orders", AckDeadline: 10 * time.Second,
+		Push: &client.PushConfig{
+			Endpoint: "http://old:8080/events",
+			OIDCToken: &client.OIDCToken{
+				ServiceAccountEmail: "pusher@local-dev.iam.gserviceaccount.com",
+				Audience:            "consumer",
+			},
+		},
+	}
+
+	cfg := &config.Config{PubSub: config.PubSub{Topics: []config.Topic{{
+		Name: "orders",
+		Subscriptions: []config.Subscription{{
+			Name: "webhook", AckDeadline: "10s",
+			PushEndpoint:  "http://new:8080/events",
+			PushOIDCToken: &config.PushOIDCToken{ServiceAccountEmail: "pusher@local-dev.iam.gserviceaccount.com"},
+		}},
+	}}}}
+
+	p := New(ps, nil, cfg, DefaultOptions())
+	if err := p.ProvisionPubSub(context.Background()); err != nil {
+		t.Fatalf("ProvisionPubSub: %v", err)
+	}
+
+	if len(ps.updatedSubs) != 1 {
+		t.Fatalf("got %d updates, want 1", len(ps.updatedSubs))
+	}
+	if got := ps.updatedSubs[0].sub.Push.OIDCToken; got == nil || got.Audience != "consumer" {
+		t.Errorf("live audience was not carried across: %+v", got)
+	}
+}
+
+// The Pub/Sub emulator answers an invalid filter expression with an internal
+// error the client retries until it times out, so the run fails a minute later
+// with a bare "context deadline exceeded". The error should name the filter.
+func TestCreateSubscriptionTimeoutNamesTheFilter(t *testing.T) {
+	ps := newMockPubSub()
+	ps.createSubErr = fmt.Errorf("creating subscription %q: %w", "audit", context.DeadlineExceeded)
+
+	cfg := &config.Config{PubSub: config.PubSub{Topics: []config.Topic{{
+		Name: "orders",
+		Subscriptions: []config.Subscription{{
+			Name: "audit", Filter: "attributes.type = order.created",
+		}},
+	}}}}
+
+	err := New(ps, nil, cfg, DefaultOptions()).ProvisionPubSub(context.Background())
+	if err == nil {
+		t.Fatal("expected the timeout to fail the run")
+	}
+	if !strings.Contains(err.Error(), "filter") {
+		t.Errorf("error = %q, want it to point at the filter", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("error = %q, want the original timeout kept in the chain", err)
+	}
+}
+
+func TestCreateSubscriptionErrorsWithoutAFilterAreUnchanged(t *testing.T) {
+	ps := newMockPubSub()
+	ps.createSubErr = context.DeadlineExceeded
+
+	cfg := &config.Config{PubSub: config.PubSub{Topics: []config.Topic{{
+		Name:          "orders",
+		Subscriptions: []config.Subscription{{Name: "audit"}},
+	}}}}
+
+	err := New(ps, nil, cfg, DefaultOptions()).ProvisionPubSub(context.Background())
+	if err == nil {
+		t.Fatal("expected the timeout to fail the run")
+	}
+	if strings.Contains(err.Error(), "filter") {
+		t.Errorf("error = %q mentions a filter the subscription does not have", err)
 	}
 }
 
