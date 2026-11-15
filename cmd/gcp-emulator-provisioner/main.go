@@ -140,6 +140,22 @@ func run(ctx context.Context, section string, opts provisioner.Options) error {
 		"credentials", len(cfg.Credentials),
 	)
 
+	if section == sectionAll {
+		slog.Info("Starting provisioning")
+	}
+
+	// Credentials touch no endpoint, so they are written before any client
+	// connects: an application that needs its key file gets it while the
+	// emulators are still coming up, or even if they never do.
+	if wants(section, sectionCredentials) {
+		if err := provisioner.New(nil, nil, cfg, opts).ProvisionCredentials(ctx); err != nil {
+			return err
+		}
+	}
+	if section == sectionCredentials {
+		return nil
+	}
+
 	// Declared as interfaces rather than concrete pointers so that skipping a
 	// section leaves a nil interface instead of one wrapping a nil pointer.
 	var pubsubAdmin provisioner.PubSubAdmin
@@ -165,16 +181,21 @@ func run(ctx context.Context, section string, opts provisioner.Options) error {
 
 	p := provisioner.New(pubsubAdmin, storageAdmin, cfg, opts)
 
-	switch section {
-	case sectionPubSub:
-		return p.ProvisionPubSub(ctx)
-	case sectionStorage:
-		return p.ProvisionStorage(ctx)
-	case sectionCredentials:
-		return p.ProvisionCredentials(ctx)
-	default:
-		return p.Run(ctx)
+	if wants(section, sectionPubSub) {
+		if err := p.ProvisionPubSub(ctx); err != nil {
+			return err
+		}
 	}
+	if wants(section, sectionStorage) {
+		if err := p.ProvisionStorage(ctx); err != nil {
+			return err
+		}
+	}
+
+	if section == sectionAll {
+		slog.Info("Provisioning complete")
+	}
+	return nil
 }
 
 // compareCreateOnlyBucketAttrs reports whether a bucket's create-time

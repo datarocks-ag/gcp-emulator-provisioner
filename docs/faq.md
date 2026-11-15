@@ -692,10 +692,11 @@ $ STORAGE_EMULATOR_HOST=localhost:4443 GCP_CONFIG_PATH=gcp-config.yaml gcp-emula
 ```
 
 For Pub/Sub, nothing more is logged after `Connecting to Pub/Sub` until it connects or the five
-minutes run out (observed in testing: the client library retries inside a single attempt). Key files are not written
-until both emulators have answered either. If an application needs its key before the emulators
-are up, write it in a separate container with `--section=credentials`. In Compose, start the
-provisioner with `depends_on: … condition: service_healthy` so it rarely has to wait.
+minutes run out (observed in testing: the client library retries inside a single attempt). Key files are written before
+any connection is attempted, so they are not held up. In Compose, start the provisioner with
+`depends_on: … condition: service_healthy` so it rarely has to wait; if an application needs its
+key before the emulators are healthy, write it in a separate container with
+`--section=credentials`.
 
 Further reading: [Run one section per container](howto/run-one-section-per-container.md),
 [Add the GCP emulators to your Compose project](howto/add-emulators-to-your-compose-project.md)

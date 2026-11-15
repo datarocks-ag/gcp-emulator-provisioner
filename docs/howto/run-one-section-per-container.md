@@ -113,9 +113,10 @@ volumes:
   gcp-secrets:
 ```
 
-This is also the way to get a key file early in a single stack: a full run writes credentials
-only after it has connected to both emulators, which can take up to five minutes per endpoint
-when one is slow. [give-a-jvm-app-credentials-for-the-emulators.md](give-a-jvm-app-credentials-for-the-emulators.md)
+This is also the way to get a key file early in a single stack. A full run writes credentials
+before it connects to anything, but a provisioner service that `depends_on` the emulators being
+healthy does not start until they are. A credentials-only container has no such dependency.
+[give-a-jvm-app-credentials-for-the-emulators.md](give-a-jvm-app-credentials-for-the-emulators.md)
 builds a whole stack around it.
 
 ## Check that it works

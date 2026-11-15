@@ -159,27 +159,6 @@ func TestCredentialsSectionSkipsWhenNotConfigured(t *testing.T) {
 	}
 }
 
-func TestRunWritesCredentialsBeforeProvisioning(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "sa.json")
-
-	ps := newMockPubSub()
-	cfg := credentialConfig(path, config.Credential{})
-	cfg.PubSub = config.PubSub{Topics: []config.Topic{{Name: "orders"}}}
-
-	p := New(ps, nil, cfg, DefaultOptions())
-	if err := p.Run(context.Background()); err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-
-	if _, err := os.Stat(path); err != nil {
-		t.Errorf("Run did not write the credential file: %v", err)
-	}
-	if len(ps.createdTopics) != 1 {
-		t.Errorf("Run did not continue to the Pub/Sub section: %+v", ps.createdTopics)
-	}
-}
-
 func TestCredentialErrorNamesThePath(t *testing.T) {
 	// A directory where the file should go makes the write fail.
 	dir := t.TempDir()

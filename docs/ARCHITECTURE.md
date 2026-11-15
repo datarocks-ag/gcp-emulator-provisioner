@@ -138,17 +138,18 @@ Three, dispatched by `--section`. They are independent, not phases.
 
 ```mermaid
 flowchart LR
-    R["Run"] --> C["credentials<br/>no endpoint"]
+    R["full run"] --> C["credentials<br/>no endpoint"]
     C --> P["pubsub"]
     P --> S["storage"]
 ```
 
-Within `Run`, credentials come first. The clients are connected before `Run`
-starts, though: `main.go` connects to every section that has resources, retrying
-for up to five minutes each, so in a full run the key files are written only
-after both emulators have answered. The credentials section itself touches no
-endpoint, so `--section=credentials` works with nothing else running, and that
-is the way to get a key file written before the emulators are up.
+In a full run, `main.go` writes credentials first, before it connects to any
+endpoint, because the applications that need the key file typically start
+alongside the provisioner — a stack whose emulators are slow to come up, or never
+come up, still gets its key written. It then connects the clients for the
+sections that have resources and runs Pub/Sub, then Cloud Storage. The
+credentials section touches no endpoint, so `--section=credentials` works with
+nothing else running.
 
 Ordering *within* the Pub/Sub section is load-bearing: every topic is created
 before any subscription, because a subscription naming a topic that does not

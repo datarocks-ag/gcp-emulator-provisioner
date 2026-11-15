@@ -46,8 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   marked otherwise.
 
   The README and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) are corrected where
-  they disagreed with the code: credentials in a full run are written only after
-  both emulators answer; `strategy: update` on a credential regenerates the key on
+  they disagreed with the code: `strategy: update` on a credential regenerates the key on
   every run while set; the token stub answers 405 to other methods on `/token`; the
   README's `token_uri` example used a port the stub does not listen on; a
   `push_wrapper` or OIDC token set out of band is dropped by the next push update;
@@ -80,6 +79,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   OpenTelemetry 1.47.0, `go-jose/v4` 4.1.6; GitHub Actions
   `docker/metadata-action` v6, `docker/build-push-action` v7,
   `docker/login-action` v4, `goreleaser/goreleaser-action` v7.
+
+### Fixed
+
+- **Credentials are written before any endpoint is contacted in a full run.**
+  The provisioner connected to Pub/Sub and Cloud Storage — each with up to five
+  minutes of retries — before writing key files, so an application waiting for
+  its key was held up by slow emulators, and got no key at all if one never came
+  up. Key files are now written first, as the documentation always said.
+  `Provisioner.Run` is gone; `main.go` sequences the sections.
 
 ## [2.0.1] - 2026-08-18
 

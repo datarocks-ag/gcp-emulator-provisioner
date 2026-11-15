@@ -333,11 +333,12 @@ gcp-emulator-provisioner --section=credentials  # key files only, no endpoint ne
 gcp-emulator-provisioner                        # all three (default)
 ```
 
-Within a full run, the key files are written only once every section with
-resources has connected: the provisioner connects to Pub/Sub and Cloud Storage
-first, retrying for up to five minutes each, and writes credentials after that.
-If an application needs its key file before the emulators are up, write it from
-a separate container that runs `--section=credentials`.
+Within a full run, credentials are written first, before the provisioner
+connects to Pub/Sub or Cloud Storage: an application that needs its key file gets
+it while the emulators are still coming up, or even if they never do. In Compose,
+where the provisioner usually waits for the emulators to report healthy before it
+starts at all, a separate container running `--section=credentials` writes the
+key earlier still.
 
 A section whose config is empty is skipped, and its client is never constructed —
 running against a stack with only fake-gcs-server needs no Pub/Sub endpoint.

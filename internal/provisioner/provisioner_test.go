@@ -359,8 +359,11 @@ func TestDryRunAppliesNothing(t *testing.T) {
 	}
 
 	p := New(ps, st, cfg, Options{DryRun: true})
-	if err := p.Run(context.Background()); err != nil {
-		t.Fatalf("Run: %v", err)
+	if err := p.ProvisionPubSub(context.Background()); err != nil {
+		t.Fatalf("ProvisionPubSub: %v", err)
+	}
+	if err := p.ProvisionStorage(context.Background()); err != nil {
+		t.Fatalf("ProvisionStorage: %v", err)
 	}
 
 	if len(ps.createdTopics)+len(ps.updatedTopics)+len(ps.createdSubs)+len(ps.updatedSubs) != 0 {
@@ -1027,7 +1030,7 @@ func TestAnnotateVersioningErrorLeavesOtherErrorsAlone(t *testing.T) {
 	}
 }
 
-func TestRunPropagatesSectionErrors(t *testing.T) {
+func TestProvisionPubSubPropagatesErrors(t *testing.T) {
 	ps := newMockPubSub()
 	ps.topics["orders"] = &client.Topic{Name: "orders"}
 	ps.updateTopicErr = errors.New("permission denied")
@@ -1037,8 +1040,8 @@ func TestRunPropagatesSectionErrors(t *testing.T) {
 	}}}
 
 	p := New(ps, newMockStorage(), cfg, DefaultOptions())
-	if err := p.Run(context.Background()); err == nil {
-		t.Fatal("Run must propagate a failure from the Pub/Sub section")
+	if err := p.ProvisionPubSub(context.Background()); err == nil {
+		t.Fatal("ProvisionPubSub must propagate an update failure")
 	}
 }
 
@@ -1046,14 +1049,14 @@ func TestSectionsSkipWhenNotConfigured(t *testing.T) {
 	// A config with no buckets must not touch the (nil) storage client.
 	cfg := &config.Config{PubSub: config.PubSub{Topics: []config.Topic{{Name: "orders"}}}}
 	p := New(newMockPubSub(), nil, cfg, DefaultOptions())
-	if err := p.Run(context.Background()); err != nil {
-		t.Fatalf("Run: %v", err)
+	if err := p.ProvisionStorage(context.Background()); err != nil {
+		t.Fatalf("ProvisionStorage: %v", err)
 	}
 
 	// And the reverse.
 	cfg = &config.Config{Storage: config.Storage{Buckets: []config.Bucket{{Name: "docs"}}}}
 	p = New(nil, newMockStorage(), cfg, DefaultOptions())
-	if err := p.Run(context.Background()); err != nil {
-		t.Fatalf("Run: %v", err)
+	if err := p.ProvisionPubSub(context.Background()); err != nil {
+		t.Fatalf("ProvisionPubSub: %v", err)
 	}
 }
