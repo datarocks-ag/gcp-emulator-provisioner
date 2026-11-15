@@ -93,6 +93,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Pub/Sub fills in, so the subscription was updated on every run. Those values are
   now compared only when set, and carried across from the live policy when another
   dead letter or retry setting changes, the same way labels are.
+- **`--help` lists every section.** The `--section` help text omitted
+  `credentials`; it is now built from the same list the value is validated
+  against.
 
 ## [2.0.1] - 2026-08-18
 

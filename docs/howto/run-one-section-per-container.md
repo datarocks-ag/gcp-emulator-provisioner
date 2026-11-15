@@ -15,8 +15,7 @@ endpoint that has resources configured.
 - **Sections.** The config has three independent parts: `pubsub` (topics and subscriptions),
   `storage` (buckets) and `credentials` (local key files). `--section` or the `GCP_SECTION`
   environment variable picks one of `pubsub`, `storage`, `credentials` or `all` (the
-  default); the flag wins over the variable. The `--help` text lists only `pubsub`, `storage`
-  and `all`, but `credentials` is accepted. See [Sections](../../README.md#sections).
+  default); the flag wins over the variable. See [Sections](../../README.md#sections).
 - **Only the selected section connects.** A container started with `--section=pubsub`
   connects to Pub/Sub only and ignores `STORAGE_EMULATOR_HOST` — it never constructs a
   Cloud Storage client. The credentials section connects to nothing.

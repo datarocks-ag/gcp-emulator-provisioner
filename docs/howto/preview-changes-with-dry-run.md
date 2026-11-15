@@ -225,8 +225,6 @@ $ curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8085/v1/projects/loc
   warning. See [Emulator Caveats](../../README.md#emulator-caveats).
 - **`strategy: create` hides changes.** A resource under `create` that already exists is logged
   as `Skipping existing … (strategy=create)` with no diff, in a dry run as in a real one.
-- **`--help` is incomplete.** The help text for `--section` lists `pubsub`, `storage` and `all`
-  only; `credentials` is accepted as well.
 
 ## Further reading
 

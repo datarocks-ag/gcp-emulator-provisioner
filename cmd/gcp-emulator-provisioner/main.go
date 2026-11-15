@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"gcp-emulator-provisioner/internal/client"
@@ -30,17 +31,31 @@ const (
 	sectionCredentials = "credentials"
 )
 
+// sectionNames lists the sections in the order --help and errors show them.
+var sectionNames = []string{sectionAll, sectionPubSub, sectionStorage, sectionCredentials}
+
 // validSections is the allowlist for --section / GCP_SECTION.
-var validSections = map[string]bool{
-	sectionAll:         true,
-	sectionPubSub:      true,
-	sectionStorage:     true,
-	sectionCredentials: true,
+var validSections = func() map[string]bool {
+	valid := make(map[string]bool, len(sectionNames))
+	for _, name := range sectionNames {
+		valid[name] = true
+	}
+	return valid
+}()
+
+// sectionUsage is the --section help text, built from sectionNames so it cannot
+// fall behind the allowlist.
+func sectionUsage() string {
+	quoted := make([]string, len(sectionNames))
+	for i, name := range sectionNames {
+		quoted[i] = strconv.Quote(name)
+	}
+	return fmt.Sprintf("Provisioning section: %s (default %q). Overrides GCP_SECTION.",
+		strings.Join(quoted, ", "), sectionAll)
 }
 
 func main() {
-	sectionFlag := flag.String("section", "",
-		`Provisioning section: "pubsub", "storage", or "all" (default). Overrides GCP_SECTION.`)
+	sectionFlag := flag.String("section", "", sectionUsage())
 	dryRunFlag := flag.Bool("dry-run", false,
 		"Log every mutation as a preview without applying it. Overrides DRY_RUN.")
 	showVersion := flag.Bool("version", false, "Print version and exit")
@@ -71,7 +86,7 @@ func main() {
 	if !validSections[section] {
 		slog.Error("Invalid section",
 			"section", section,
-			"valid", []string{sectionAll, sectionPubSub, sectionStorage, sectionCredentials},
+			"valid", sectionNames,
 		)
 		os.Exit(1)
 	}

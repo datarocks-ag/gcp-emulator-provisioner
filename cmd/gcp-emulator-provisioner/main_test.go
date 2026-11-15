@@ -88,6 +88,17 @@ func TestRunWritesCredentialsBeforeConnecting(t *testing.T) {
 	}
 }
 
+// The --section help once listed three of the four sections; deriving it from
+// the allowlist keeps --help and validation in agreement.
+func TestSectionUsageNamesEverySection(t *testing.T) {
+	usage := sectionUsage()
+	for section := range validSections {
+		if !strings.Contains(usage, `"`+section+`"`) {
+			t.Errorf("--section help %q does not mention %q", usage, section)
+		}
+	}
+}
+
 func TestSetupLogging(t *testing.T) {
 	// Every level, plus an unrecognised value that must fall back rather than fail.
 	for _, level := range []string{"debug", "info", "warn", "error", "nonsense", ""} {
