@@ -207,7 +207,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           # IMAGE_NAME is the repository, which only names the provisioner, so
           # the image name comes from the matrix instead.
