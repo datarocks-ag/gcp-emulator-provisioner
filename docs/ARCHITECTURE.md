@@ -143,9 +143,12 @@ flowchart LR
     P --> S["storage"]
 ```
 
-Credentials come first in a full run because the applications that need the key
-usually start alongside the provisioner. It touches no endpoint, so
-`--section=credentials` works with nothing else running.
+Within `Run`, credentials come first. The clients are connected before `Run`
+starts, though: `main.go` connects to every section that has resources, retrying
+for up to five minutes each, so in a full run the key files are written only
+after both emulators have answered. The credentials section itself touches no
+endpoint, so `--section=credentials` works with nothing else running, and that
+is the way to get a key file written before the emulators are up.
 
 Ordering *within* the Pub/Sub section is load-bearing: every topic is created
 before any subscription, because a subscription naming a topic that does not
@@ -164,7 +167,7 @@ flowchart TD
     C --> Z["done"]
     B -->|"yes"| D{"strategy is create?"}
     D -->|"yes"| Z
-    D -->|"no"| E["immutableDrift:<br/>warn and drop"]
+    D -->|"no"| E["subscriptions only, immutableDrift:<br/>warn and drop"]
     E --> F["diff into mask paths"]
     F --> G{"any paths?"}
     G -->|"no"| Z
