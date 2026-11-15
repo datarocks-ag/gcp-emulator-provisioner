@@ -475,3 +475,9 @@ func IsUnsupportedField(err error) bool {
 	return strings.Contains(msg, "is not a known") ||
 		strings.Contains(msg, "currently unsupported in the Pub/Sub Emulator")
 }
+
+// IsTimeout reports whether a call failed because its deadline passed, whether
+// the client library surfaced that as a gRPC status or as the context error.
+func IsTimeout(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) || status.Code(err) == codes.DeadlineExceeded
+}

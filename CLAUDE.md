@@ -221,6 +221,11 @@ any gap not yet catalogued.
 The emulator returns the *same* text for a single-path mask as for a batch, which is what makes
 the retry safe; if that ever changes, the retry would turn a warning into a fatal error.
 
+**An invalid `filter` is a third case, and it stays fatal.** The emulator answers a filter it
+cannot parse with an internal error that the client retries until its 60s deadline, so the run
+fails with a bare `DeadlineExceeded`. `annotateFilterError` adds a hint when the subscription has a
+filter; it does not downgrade anything, because the subscription genuinely was not created.
+
 ### fake-gcs-server is far more limited than it looks
 
 Verified against `fsouza/fake-gcs-server:latest`:

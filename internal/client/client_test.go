@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -351,5 +352,20 @@ func TestTopicProtoConversion(t *testing.T) {
 	}
 	if got := c.projectPath(); got != "projects/local-dev" {
 		t.Errorf("projectPath = %q", got)
+	}
+}
+
+func TestIsTimeout(t *testing.T) {
+	if !IsTimeout(fmt.Errorf("creating subscription: %w", context.DeadlineExceeded)) {
+		t.Error("a wrapped context deadline is a timeout")
+	}
+	if !IsTimeout(status.Error(codes.DeadlineExceeded, "deadline exceeded")) {
+		t.Error("a DeadlineExceeded status is a timeout")
+	}
+	if IsTimeout(status.Error(codes.InvalidArgument, "bad filter")) {
+		t.Error("an InvalidArgument status is not a timeout")
+	}
+	if IsTimeout(context.Canceled) {
+		t.Error("a cancellation is not a timeout")
 	}
 }

@@ -43,7 +43,7 @@ func (p *Provisioner) ensureSubscription(ctx context.Context, topicName string, 
 		}
 
 		slog.Info("Creating subscription", "subscription", sub.Name, "topic", topicName)
-		return p.pubsub.CreateSubscription(ctx, desired)
+		return annotateFilterError(p.pubsub.CreateSubscription(ctx, desired), desired.Filter)
 	}
 
 	if strategy == "create" {
@@ -85,6 +85,20 @@ func (p *Provisioner) ensureSubscription(ctx context.Context, topicName string, 
 			slog.Warn("Subscription field not supported by this Pub/Sub endpoint, leaving it unchanged",
 				"subscription", sub.Name, "field", path, "error", err)
 		})
+}
+
+// annotateFilterError names the likely cause when creating a filtered
+// subscription times out. The Pub/Sub emulator answers an invalid filter
+// expression with an internal error that the client retries until its deadline,
+// so the run otherwise fails a minute later with a bare deadline error and the
+// real reason only in the emulator's own log.
+func annotateFilterError(err error, filter string) error {
+	if err == nil || filter == "" || !client.IsTimeout(err) {
+		return err
+	}
+	return fmt.Errorf("%w (the subscription has a filter: the Pub/Sub emulator answers an invalid "+
+		"filter expression by timing out, so check the filter syntax, and the emulator's log for "+
+		"FilterExpressionParser)", err)
 }
 
 // buildSubscription converts a config.Subscription into the transport-neutral form.

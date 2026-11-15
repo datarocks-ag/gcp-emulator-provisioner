@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -43,6 +44,7 @@ type mockPubSub struct {
 
 	updateTopicErr error
 	updateSubErr   error
+	createSubErr   error
 
 	// unsupported*Paths make this endpoint refuse specific mask paths, the way
 	// the Pub/Sub emulator refuses `labels`. sub/topicUpdateCalls record every
@@ -131,6 +133,9 @@ func (m *mockPubSub) GetSubscription(_ context.Context, name string) (*client.Su
 }
 
 func (m *mockPubSub) CreateSubscription(_ context.Context, s client.Subscription) error {
+	if m.createSubErr != nil {
+		return m.createSubErr
+	}
 	m.createdSubs = append(m.createdSubs, s)
 	copied := s
 	m.subs[s.Name] = &copied
@@ -958,6 +963,50 @@ func TestOmittedPushAudienceSurvivesAnUpdate(t *testing.T) {
 	}
 	if got := ps.updatedSubs[0].sub.Push.OIDCToken; got == nil || got.Audience != "consumer" {
 		t.Errorf("live audience was not carried across: %+v", got)
+	}
+}
+
+// The Pub/Sub emulator answers an invalid filter expression with an internal
+// error the client retries until it times out, so the run fails a minute later
+// with a bare "context deadline exceeded". The error should name the filter.
+func TestCreateSubscriptionTimeoutNamesTheFilter(t *testing.T) {
+	ps := newMockPubSub()
+	ps.createSubErr = fmt.Errorf("creating subscription %q: %w", "audit", context.DeadlineExceeded)
+
+	cfg := &config.Config{PubSub: config.PubSub{Topics: []config.Topic{{
+		Name: "orders",
+		Subscriptions: []config.Subscription{{
+			Name: "audit", Filter: "attributes.type = order.created",
+		}},
+	}}}}
+
+	err := New(ps, nil, cfg, DefaultOptions()).ProvisionPubSub(context.Background())
+	if err == nil {
+		t.Fatal("expected the timeout to fail the run")
+	}
+	if !strings.Contains(err.Error(), "filter") {
+		t.Errorf("error = %q, want it to point at the filter", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("error = %q, want the original timeout kept in the chain", err)
+	}
+}
+
+func TestCreateSubscriptionErrorsWithoutAFilterAreUnchanged(t *testing.T) {
+	ps := newMockPubSub()
+	ps.createSubErr = context.DeadlineExceeded
+
+	cfg := &config.Config{PubSub: config.PubSub{Topics: []config.Topic{{
+		Name:          "orders",
+		Subscriptions: []config.Subscription{{Name: "audit"}},
+	}}}}
+
+	err := New(ps, nil, cfg, DefaultOptions()).ProvisionPubSub(context.Background())
+	if err == nil {
+		t.Fatal("expected the timeout to fail the run")
+	}
+	if strings.Contains(err.Error(), "filter") {
+		t.Errorf("error = %q mentions a filter the subscription does not have", err)
 	}
 }
 

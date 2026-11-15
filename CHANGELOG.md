@@ -100,6 +100,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wrapper or OIDC token set out of band was dropped. They are now carried across
   like push attributes. An omitted OIDC `audience` is no longer compared, so
   Pub/Sub defaulting it to the endpoint cannot show up as drift on every run.
+- **A filtered subscription that times out says why.** The Pub/Sub emulator
+  answers an invalid filter expression by timing out, so the run failed after a
+  minute with a bare `context deadline exceeded`. The error now points at the
+  filter and at the emulator's log.
 - **`GCP_PROJECT_ID` is validated** like `project_id` in the config file. It
   overrides the file, so an invalid value previously reached the API unchecked
   and failed there with an opaque error.
