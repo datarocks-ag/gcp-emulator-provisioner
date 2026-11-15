@@ -10,7 +10,8 @@ as a one-shot container — either as a Docker Compose init service (via
 
 The name says *emulator* because that is the primary use case: standing up the
 Pub/Sub and Cloud Storage state a local dev stack expects, against
-`gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators` and `fsouza/fake-gcs-server`.
+the Pub/Sub emulator in `gcr.io/google.com/cloudsdktool/google-cloud-cli` and
+`fsouza/fake-gcs-server` (pinned versions in [Emulator Caveats](#emulator-caveats)).
 Unlike the sibling provisioners in this ecosystem, which drive the genuine
 article, there is no way to run Google Cloud locally — so the local target is a
 reimplementation, and coping with its gaps is a first-class design concern here.
@@ -48,8 +49,36 @@ together, with diagrams.
 docker compose up
 ```
 
-This starts both emulators, waits for them to become healthy, provisions
-everything in `config.example.yaml`, and exits 0.
+This starts both emulators and the token stub, waits for the emulators to become
+healthy, and provisions everything in `config.example.yaml`. The provisioner
+container exits 0; the emulators and the token stub keep running until you stop
+the stack.
+
+## Documentation
+
+Jump straight to a how-to if you know what you need; the sections below this one
+are the reference.
+
+| | |
+|---|---|
+| **How-to guides** | Task-focused walk-throughs: |
+| &nbsp;&nbsp;[Add the GCP emulators to your Compose project](docs/howto/add-emulators-to-your-compose-project.md) | Include the emulator fragment and order the provisioner and your services after it. |
+| &nbsp;&nbsp;[Receive Cloud Storage notifications locally](docs/howto/receive-bucket-notifications-locally.md) | Object events from fake-gcs-server delivered to a Pub/Sub subscription. |
+| &nbsp;&nbsp;[Keep fake-gcs-server objects across restarts](docs/howto/keep-objects-across-restarts.md) | The filesystem backend, and what you give up for it. |
+| &nbsp;&nbsp;[Give a JVM application credentials for the emulators](docs/howto/give-a-jvm-app-credentials-for-the-emulators.md) | A fake service account key and the token stub for Spring Cloud GCP. |
+| &nbsp;&nbsp;[Route failed messages to a dead letter topic](docs/howto/route-failed-messages-to-a-dead-letter-topic.md) | `dead_letter` and `retry` settings that converge. |
+| &nbsp;&nbsp;[Deliver messages with a push subscription](docs/howto/deliver-messages-with-a-push-subscription.md) | Endpoint, attributes, payload wrapper and OIDC token. |
+| &nbsp;&nbsp;[Create an ordered or filtered subscription](docs/howto/create-an-ordered-or-filtered-subscription.md) | Settings fixed at creation, and what a later change does. |
+| &nbsp;&nbsp;[Turn bucket versioning on or off](docs/howto/turn-bucket-versioning-on-or-off.md) | The three states of `versioning` and the backend it needs. |
+| &nbsp;&nbsp;[Run the provisioner as a Kubernetes Job](docs/howto/run-the-provisioner-as-a-kubernetes-job.md) | ConfigMap, retry budget, image tags, init-container variant. |
+| &nbsp;&nbsp;[Run one section per container](docs/howto/run-one-section-per-container.md) | `--section` for emulators in separate stacks or an early key file. |
+| &nbsp;&nbsp;[Provision resources in real Google Cloud](docs/howto/provision-resources-in-real-google-cloud.md) | Application Default Credentials, the API calls made, and auth failures. |
+| &nbsp;&nbsp;[Preview changes with dry-run](docs/howto/preview-changes-with-dry-run.md) | See every create and update before it happens. |
+| &nbsp;&nbsp;[Change settings on existing resources](docs/howto/change-settings-on-existing-resources.md) | `strategy`, subset diffing, merged labels and fields that cannot change. |
+| &nbsp;&nbsp;[Validate a config without emulators](docs/howto/validate-a-config-without-emulators.md) | Catch config errors with nothing running. |
+| **[FAQ](docs/faq.md)** | Configuration errors, day-to-day behaviour, emulators, the token stub, operations. |
+| **[Architecture](docs/ARCHITECTURE.md)** | How the components fit together, with diagrams. |
+| **[Changelog](CHANGELOG.md)** | What changed in each release. |
 
 ## Reusing the emulator stack
 
@@ -90,7 +119,7 @@ replaying local edits.
 | `STORAGE_EMULATOR_PORT` | `4443` | the published host port |
 | `STORAGE_EMULATOR_PUBLIC_HOST` | `localhost:4443` | the `Host` that path-style signed URLs must be requested with |
 | `STORAGE_NOTIFICATIONS_TOPIC` | `storage-notifications` | the topic object events are published to |
-| `STORAGE_NOTIFICATIONS_EVENTS` | `finalize` | `finalize`, `delete`, `metadataUpdate`, `archive` |
+| `STORAGE_NOTIFICATIONS_EVENTS` | `finalize` | comma-separated: `finalize`, `delete`, `metadataUpdate` |
 
 The container-internal ports are fixed at 8085 and 4443, so `pubsub:8085` and
 `gcs:4443` stay correct inside the network whatever the host publishes.
@@ -112,7 +141,7 @@ pubsub:
 
 If it does not, the upload still answers `200` and the event is dropped — the only
 trace is `error publishing event: ... NotFound` in the `gcs` container log. Nothing
-fails loudly; the notifications simply never arrive.
+fails loudly; the notifications never arrive.
 
 ### Persisting objects
 
@@ -134,8 +163,20 @@ services:
     user: "${STORAGE_EMULATOR_USERID:-1000}:${STORAGE_EMULATOR_GROUPID:-1000}"
 ```
 
-A bucket declaring `versioning` then fails against it — see
-[Emulator Caveats](#emulator-caveats).
+Create `./run/mock-storage` before the first `up`. If it does not exist, Docker
+creates it owned by root, the non-root `gcs` process cannot write to it, and
+every bucket call answers 500.
+
+Replacing `command` also drops everything else the fragment passes: the
+`-event.*` arguments, so object notifications stop, and the
+`STORAGE_EMULATOR_PUBLIC_HOST` default, which this example hardcodes as
+`localhost:4443`. Copy the `-event.*` arguments from
+[docker-compose.emulators.yaml](docker-compose.emulators.yaml) if you still want
+notifications.
+
+A bucket declaring `versioning: true` then fails against it — see
+[Emulator Caveats](#emulator-caveats). Omitting `versioning`, or setting it to
+`false` on a bucket that never had it, does not.
 
 ### Why a fragment and not an image
 
@@ -181,8 +222,8 @@ make is answered by an emulator that ignores authentication entirely.
 ```yaml
 credentials:
   - path: ./secrets/fake-sa.json
-    account: local-emulator                    # optional
-    token_uri: http://oauth2-stub:8080/token   # optional
+    account: local-emulator                        # optional
+    token_uri: http://gcp-token-stub:8099/token    # optional
 ```
 
 The generated file is **structurally a real key and cryptographically inert**.
@@ -191,7 +232,7 @@ the file cannot authenticate to Google Cloud — it is the credential equivalent
 of a self-signed certificate for localhost. Verified as accepted by Google's own
 auth library, which is what makes it work where a hand-written placeholder fails.
 
-Every identifying field is a fixed, obviously non-Google value, so the file
+Every identifying field is a fixed, recognisably non-Google value, so the file
 cannot be mistaken for a real credential:
 
 | Field | Value |
@@ -213,8 +254,9 @@ to nothing.
 **The file is never rewritten once it exists.** Its contents are a fresh
 keypair, so rewriting would rotate the credential underneath whatever already
 loaded it, and could never converge. This is the one setting that does not
-inherit the global `strategy` — put `strategy: update` on the entry itself to
-force a new key.
+inherit the global `strategy`. To force a new key, put `strategy: update` on the
+entry itself for **one** run and then remove it again — while it is set, every
+run writes a new keypair. Deleting the file has the same effect on the next run.
 
 ## The token stub
 
@@ -238,7 +280,8 @@ gcp-token-stub --ping               # probe a running stub; for healthchecks
 ```
 POST /token  ->  200 {"access_token":"local-emulator-token","token_type":"Bearer","expires_in":3600}
 GET  /token  ->  the same, so a healthcheck can probe without forging a grant
-anything else -> 404 {"error":"not_found"}
+other methods on /token -> 405 {"error":"invalid_request"}
+any other path           -> 404 {"error":"not_found"}
 ```
 
 Point a credential at it and the whole loop closes locally:
@@ -280,7 +323,8 @@ perfectly well.
 
 Pub/Sub and Cloud Storage are independent services on different endpoints, so
 they are separate sections that can be run separately. Credentials are a third
-section that touches no endpoint at all, so it runs with no emulator up:
+section that touches no endpoint at all, so `--section=credentials` runs with no
+emulator up:
 
 ```bash
 gcp-emulator-provisioner --section=pubsub       # topics and subscriptions only
@@ -289,8 +333,11 @@ gcp-emulator-provisioner --section=credentials  # key files only, no endpoint ne
 gcp-emulator-provisioner                        # all three (default)
 ```
 
-Within a full run, credentials are written first: the applications that need the
-key file usually start alongside the provisioner rather than after it.
+Within a full run, the key files are written only once every section with
+resources has connected: the provisioner connects to Pub/Sub and Cloud Storage
+first, retrying for up to five minutes each, and writes credentials after that.
+If an application needs its key file before the emulators are up, write it from
+a separate container that runs `--section=credentials`.
 
 A section whose config is empty is skipped, and its client is never constructed —
 running against a stack with only fake-gcs-server needs no Pub/Sub endpoint.
@@ -304,7 +351,7 @@ running against a stack with only fake-gcs-server needs no Pub/Sub endpoint.
 | `STORAGE_EMULATOR_HOST` | no | — | Host of the Cloud Storage emulator, with or without a scheme. Unset means Google Cloud |
 | `GCP_SECTION` | no | `all` | `pubsub`, `storage`, `credentials`, or `all` |
 | `GCP_CONFIG_PATH` | no | `./config.yaml` | Path to the YAML config |
-| `DRY_RUN` | no | `false` | Set to `true` to log every mutation as a preview without applying it |
+| `DRY_RUN` | no | `false` | Set to `true` to log every mutation as a preview without applying it. Parsed with Go's `strconv.ParseBool` (`1`, `t`, `TRUE` … also work); anything else fails the run |
 | `LOG_LEVEL` | no | `info` | Log level (debug/info/warn/error) |
 
 `GCP_PROJECT_ID` takes precedence over `project_id` in the config file.
@@ -365,18 +412,24 @@ stops a config from passing against the emulator and failing in production.
 | `ack_deadline` | 10s – 600s, whole seconds only |
 | `message_retention` (topic and subscription) | 10m – 31d |
 | `expiration_ttl` | 1d – 365d, or `never` |
-| `retry.minimum_backoff`, `retry.maximum_backoff` | 0s – 600s |
+| `retry.minimum_backoff`, `retry.maximum_backoff` | 0s – 600s, and `minimum_backoff` ≤ `maximum_backoff` |
 | `dead_letter.max_delivery_attempts` | 5 – 100 |
 
 `ack_deadline` must be a whole number of seconds because Pub/Sub stores it as
 `ack_deadline_seconds`: `10s500ms` would be truncated on the wire, read back as
 `10s`, and then reported as drift on every subsequent run.
 
+Set `max_delivery_attempts` whenever you set `dead_letter`, and both backoffs
+whenever you set `retry`. A value left out is sent as zero, Pub/Sub fills in its
+own default, and the next run sees the difference and updates the subscription
+again — on every run.
+
 ### Push subscriptions
 
 A subscription with a `push_endpoint` is delivered over HTTP instead of pulled.
-Three optional settings sit alongside it, all part of the same `push_config` and
-all meaningless without an endpoint:
+The other push settings sit alongside it, all part of the same `push_config`. Each
+of them requires `push_endpoint`, and a config that sets one without it is
+rejected at load:
 
 ```yaml
 push_endpoint: https://consumer.example.com/events
@@ -389,9 +442,11 @@ push_wrapper: none               # "pubsub" (default envelope) | "none" (raw pay
 push_write_metadata: true        # X-Goog-Pubsub-* headers; only with push_wrapper: none
 ```
 
-Omitting `push_wrapper` leaves whatever the subscription already has. Push
-attributes already set out of band are preserved across an update, the same way
-labels are — the update mask replaces the whole `push_config` message.
+The update mask replaces the whole `push_config` message. Push attributes already
+set out of band are carried across an update, the same way labels are. A
+`push_wrapper` or `push_oidc_token` set out of band is not: omitting them from the
+config leaves them alone only until some other push setting changes, and that
+update sends the config's `push_config` without them.
 
 Neither emulator validates the service account, so `push_oidc_token` is inert
 locally and only takes effect against Google Cloud.
@@ -431,6 +486,9 @@ acknowledgement state.
 | `filter` | Immutable on Google Cloud; the emulator rejects the update explicitly |
 | `enable_message_ordering` | Immutable on Google Cloud and in the emulator |
 | the subscription's topic | Immutable everywhere |
+
+The log samples in this README are shown as `key=value` for readability. The
+binary writes one JSON object per line to stdout.
 
 ```
 WARN Subscription field cannot be changed after creation, leaving it as is
@@ -489,7 +547,10 @@ real. `STORAGE_EMULATOR_HOST` is what decides.
 
 **fake-gcs-server accepts bucket CORS and discards it**, exactly as it does
 labels and lifecycle rules — the `POST` returns 200 and the bucket never reports
-the policy back. That is why the config schema has no `cors`.
+the policy back. That is why the config schema has no `cors`, `labels` or
+`lifecycle` for buckets. The config loader ignores keys it does not know rather
+than rejecting them, so a `cors:` block in your file loads without an error and
+has no effect.
 
 **The Pub/Sub emulator image is roughly a gigabyte**, so the first pull dominates
 a cold start — which is why the Compose healthcheck allows a long `start_period`
@@ -554,14 +615,17 @@ service account through Workload Identity.
 ## Exit Codes
 
 - `0` — provisioning completed (Kubernetes `Job` compatible)
-- `1` — invalid section, config load, connection, or provisioning failure
+- `1` — invalid section, invalid `DRY_RUN` value, config load, connection, or
+  provisioning failure
+- `2` — unknown command-line flag (reported by Go's `flag` package before
+  anything else runs)
 
 ## Development
 
 ```sh
 make build             # go build -o gcp-emulator-provisioner ./cmd/gcp-emulator-provisioner
 make test              # go test -race ./...
-make test-integration  # go test -race -tags=integration ./...   (requires Docker)
+make test-integration  # go test -race -tags=integration -v -timeout 30m ./...  (requires Docker)
 make lint              # go tool golangci-lint run
 make docker            # docker build -t gcp-emulator-provisioner .
 ```
