@@ -124,7 +124,7 @@ services:
       - ${GCP_PROJECT_ID:-local-dev}
       - -event.pubsub-topic
       - ${STORAGE_NOTIFICATIONS_TOPIC:-storage-notifications}
-      # finalize (upload or overwrite), delete, metadataUpdate, archive.
+      # finalize (upload or overwrite), delete, metadataUpdate.
       - -event.list
       - ${STORAGE_NOTIFICATIONS_EVENTS:-finalize}
     environment:
