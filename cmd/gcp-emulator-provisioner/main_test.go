@@ -65,6 +65,21 @@ func TestRunRequiresAProjectID(t *testing.T) {
 	}
 }
 
+// GCP_PROJECT_ID overrides project_id, so it has to pass the same check:
+// otherwise a value the config file would reject reaches the API unvalidated.
+func TestRunRejectsAnInvalidGCPProjectID(t *testing.T) {
+	writeConfig(t, "project_id: local-dev\n")
+	t.Setenv("GCP_PROJECT_ID", "Local_Dev")
+
+	err := run(context.Background(), sectionAll, provisioner.DefaultOptions())
+	if err == nil {
+		t.Fatal("expected an invalid GCP_PROJECT_ID to fail the run")
+	}
+	if !strings.Contains(err.Error(), "GCP_PROJECT_ID") {
+		t.Errorf("error = %v, want it to name GCP_PROJECT_ID", err)
+	}
+}
+
 // TestRunWritesCredentialsBeforeConnecting pins the reason credentials come
 // first in a full run: an application that needs its key file must get it even
 // while the emulators are still coming up, or never come up at all.

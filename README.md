@@ -355,7 +355,9 @@ running against a stack with only fake-gcs-server needs no Pub/Sub endpoint.
 | `DRY_RUN` | no | `false` | Set to `true` to log every mutation as a preview without applying it. Parsed with Go's `strconv.ParseBool` (`1`, `t`, `TRUE` … also work); anything else fails the run |
 | `LOG_LEVEL` | no | `info` | Log level (debug/info/warn/error) |
 
-`GCP_PROJECT_ID` takes precedence over `project_id` in the config file.
+`GCP_PROJECT_ID` takes precedence over `project_id` in the config file. Both are
+checked against Google Cloud's project id format, even when the target is an
+emulator, so a config that runs locally runs unchanged against Google Cloud.
 
 ## CLI Flags
 

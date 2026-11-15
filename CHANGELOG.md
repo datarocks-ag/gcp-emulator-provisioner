@@ -96,6 +96,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`--help` lists every section.** The `--section` help text omitted
   `credentials`; it is now built from the same list the value is validated
   against.
+- **`GCP_PROJECT_ID` is validated** like `project_id` in the config file. It
+  overrides the file, so an invalid value previously reached the API unchecked
+  and failed there with an opaque error.
 - **An unreachable Pub/Sub endpoint now logs retry warnings.** The readiness
   probe had no deadline of its own, and the client library retried inside it, so
   the provisioner logged nothing for five minutes. Each attempt is now bounded to

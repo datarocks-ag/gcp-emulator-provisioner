@@ -46,8 +46,8 @@ $ export GCP_PROJECT_ID=<your-project-id>
 ```
 
 `GCP_PROJECT_ID` overrides `project_id` in the config, so one config file can serve every
-project. The variable is not validated; `project_id` in the file must match Google's rules
-(6–30 characters, lowercase letters, digits and hyphens, starting with a letter).
+project. Both must match Google's rules (6–30 characters, lowercase letters, digits and
+hyphens, starting with a letter); an invalid value fails the run before anything is called.
 
 ### 3. Give the provisioner an identity
 

@@ -321,17 +321,28 @@ var bucketNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$`)
 
 // projectIDPattern validates a Google Cloud project ID: 6-30 characters,
 // starting with a lowercase letter, made up of lowercase letters, digits and
-// hyphens, and not ending in a hyphen. Emulator projects are conventionally
-// looser, so this is deliberately the only place project IDs are checked.
+// hyphens, and not ending in a hyphen. The emulators accept looser ids, but a
+// config is meant to run unchanged against Google Cloud, so both sources of the
+// id — project_id and GCP_PROJECT_ID — are held to Google Cloud's rule.
 var projectIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{4,28}[a-z0-9]$`)
+
+// ValidateProjectID reports whether id is a valid Google Cloud project ID.
+func ValidateProjectID(id string) error {
+	if !projectIDPattern.MatchString(id) {
+		return fmt.Errorf("invalid project id %q (must be 6-30 chars, lowercase letters, digits and hyphens, starting with a letter)", id)
+	}
+	return nil
+}
 
 func validate(cfg *Config) error {
 	if err := validateStrategy("strategy", cfg.Strategy); err != nil {
 		return err
 	}
 
-	if cfg.ProjectID != "" && !projectIDPattern.MatchString(cfg.ProjectID) {
-		return fmt.Errorf("project_id: invalid project id %q (must be 6-30 chars, lowercase letters, digits and hyphens, starting with a letter)", cfg.ProjectID)
+	if cfg.ProjectID != "" {
+		if err := ValidateProjectID(cfg.ProjectID); err != nil {
+			return fmt.Errorf("project_id: %w", err)
+		}
 	}
 
 	if err := validateTopics(cfg.PubSub.Topics); err != nil {
