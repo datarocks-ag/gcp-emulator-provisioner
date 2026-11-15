@@ -271,9 +271,11 @@ labels would delete every label the provisioner does not manage. Same hazard as
 `seaweedfs-provisioner`'s lifecycle merge.
 
 `push_config` has the same shape one level down. `pushConfigEqual` compares only what the config
-declares, and the push attributes are merged in `ensureSubscription` alongside the labels —
-the mask replaces the whole `push_config` message, so an update triggered by a drifted endpoint
-would otherwise delete every attribute set out of band. The push wrapper needs one extra guard:
+declares — including the OIDC `audience`, which Pub/Sub defaults to the endpoint — and
+`mergePushConfig` carries every omitted push setting across before an update: attributes, the
+wrapper with its `write_metadata`, the OIDC token and its audience. The mask replaces the whole
+`push_config` message, so an update triggered by a drifted endpoint would otherwise delete
+everything set out of band. The push wrapper needs one extra guard:
 `effectiveWrapper` resolves an unset **live** wrapper to `WrapperPubSub` (the Pub/Sub default)
 before comparing, never the desired one, or `push_wrapper: pubsub` would drift forever against an
 endpoint that does not echo a wrapper back.

@@ -48,8 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The README and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) are corrected where
   they disagreed with the code: `strategy: update` on a credential regenerates the key on
   every run while set; the token stub answers 405 to other methods on `/token`; the
-  README's `token_uri` example used a port the stub does not listen on; a
-  `push_wrapper` or OIDC token set out of band is dropped by the next push update;
+  README's `token_uri` example used a port the stub does not listen on;
   `archive` is not a
   fake-gcs-server notification event; unknown config keys are ignored rather than
   rejected; exit code 2 for an unknown flag.
@@ -96,6 +95,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`--help` lists every section.** The `--section` help text omitted
   `credentials`; it is now built from the same list the value is validated
   against.
+- **Push settings the config leaves out survive an update.** When any push
+  setting changed, the whole `push_config` was sent from the config alone, so a
+  wrapper or OIDC token set out of band was dropped. They are now carried across
+  like push attributes. An omitted OIDC `audience` is no longer compared, so
+  Pub/Sub defaulting it to the endpoint cannot show up as drift on every run.
 - **`GCP_PROJECT_ID` is validated** like `project_id` in the config file. It
   overrides the file, so an invalid value previously reached the API unchecked
   and failed there with an opaque error.

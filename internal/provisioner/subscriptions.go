@@ -72,11 +72,7 @@ func (p *Provisioner) ensureSubscription(ctx context.Context, topicName string, 
 	}
 
 	desired.Labels = mergeLabels(current.Labels, desired.Labels)
-	// The mask replaces the whole push_config, so push attributes set out of band
-	// have to be carried across for the same reason labels do.
-	if desired.Push != nil && current.Push != nil {
-		desired.Push.Attributes = mergeLabels(current.Push.Attributes, desired.Push.Attributes)
-	}
+	desired.Push = mergePushConfig(current.Push, desired.Push)
 	desired.DeadLetter = mergeDeadLetter(current.DeadLetter, desired.DeadLetter)
 	desired.Retry = mergeRetry(current.Retry, desired.Retry)
 
@@ -289,11 +285,44 @@ func pushConfigEqual(current, desired *client.PushConfig) bool {
 
 // oidcEqual compares the push authentication. A config that declares no token
 // leaves whatever is on the subscription alone, matching every other omitted field.
+// An omitted audience is defaulted by Pub/Sub, so it is not compared either.
 func oidcEqual(current, desired *client.OIDCToken) bool {
 	if desired == nil {
 		return true
 	}
-	return current != nil && *current == *desired
+	if current == nil || current.ServiceAccountEmail != desired.ServiceAccountEmail {
+		return false
+	}
+	return desired.Audience == "" || desired.Audience == current.Audience
+}
+
+// mergePushConfig carries the push settings the config leaves out across from
+// the live push config. The update mask replaces the whole push_config message,
+// so anything not carried across — attributes, the wrapper, the OIDC token or
+// its audience — would be dropped by an update triggered for another reason.
+func mergePushConfig(current, desired *client.PushConfig) *client.PushConfig {
+	if current == nil || desired == nil {
+		return desired
+	}
+	merged := *desired
+	merged.Attributes = mergeLabels(current.Attributes, desired.Attributes)
+
+	if merged.Wrapper == client.WrapperUnset {
+		merged.Wrapper = current.Wrapper
+		merged.WriteMetadata = current.WriteMetadata
+	}
+
+	switch {
+	case merged.OIDCToken == nil && current.OIDCToken != nil:
+		token := *current.OIDCToken
+		merged.OIDCToken = &token
+	case merged.OIDCToken != nil && merged.OIDCToken.Audience == "" &&
+		current.OIDCToken != nil && current.OIDCToken.ServiceAccountEmail == merged.OIDCToken.ServiceAccountEmail:
+		token := *merged.OIDCToken
+		token.Audience = current.OIDCToken.Audience
+		merged.OIDCToken = &token
+	}
+	return &merged
 }
 
 // effectiveWrapper resolves a live wrapper for comparison. Pub/Sub defaults an

@@ -444,11 +444,11 @@ push_wrapper: none               # "pubsub" (default envelope) | "none" (raw pay
 push_write_metadata: true        # X-Goog-Pubsub-* headers; only with push_wrapper: none
 ```
 
-The update mask replaces the whole `push_config` message. Push attributes already
-set out of band are carried across an update, the same way labels are. A
-`push_wrapper` or `push_oidc_token` set out of band is not: omitting them from the
-config leaves them alone only until some other push setting changes, and that
-update sends the config's `push_config` without them.
+The update mask replaces the whole `push_config` message, so every push setting
+the config leaves out is carried across from the live subscription when an update
+is sent: push attributes (merged, the same way labels are), the wrapper, the OIDC
+token, and the token's `audience`. An omitted `audience` is not compared either,
+so Pub/Sub's default does not show up as drift.
 
 Neither emulator validates the service account, so `push_oidc_token` is inert
 locally and only takes effect against Google Cloud.

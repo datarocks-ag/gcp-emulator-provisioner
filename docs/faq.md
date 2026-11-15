@@ -311,8 +311,8 @@ top of those already on the resource, and nothing is removed.
 An update replaces the whole label map (or the whole push configuration), so writing only the
 configured values would delete everything set elsewhere. Two limits apply: the Pub/Sub emulator
 refuses label updates altogether (see [Why do I see "field not supported by this Pub/Sub endpoint" warnings?](#why-do-i-see-field-not-supported-by-this-pubsub-endpoint-warnings)), and when a push setting
-changes, a push wrapper or OpenID Connect (OIDC) token set by hand outside the config is not carried over, only
-the attributes are.
+changes, the push wrapper and OpenID Connect (OIDC) token set by hand outside the config are kept
+as well, as long as the config does not declare its own.
 
 Measured against the Pub/Sub emulator: `x-team` was added by hand, then the config changed the
 endpoint to port 8081.
