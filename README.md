@@ -494,7 +494,7 @@ the policy back. That is why the config schema has no `cors`.
 **The Pub/Sub emulator image is roughly a gigabyte**, so the first pull dominates
 a cold start — which is why the Compose healthcheck allows a long `start_period`
 and the integration tests allow a five-minute startup. Compose and the tests pin
-`gcr.io/google.com/cloudsdktool/google-cloud-cli:581.0.0-emulators`, the renamed
+`gcr.io/google.com/cloudsdktool/google-cloud-cli:593.0.0-emulators`, the renamed
 `cloud-sdk` repository and the one publishing arm64, so an Apple Silicon host runs
 it natively instead of under emulation.
 

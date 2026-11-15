@@ -53,7 +53,7 @@ services:
   # emulation. Pinned rather than floating `:emulators` — the tag moves, and an
   # upstream change would otherwise break a stack with no local commit to blame.
   pubsub:
-    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:581.0.0-emulators
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:593.0.0-emulators
     # entrypoint, not command: Compose clears the image's CMD when entrypoint is
     # overridden, so this is the whole argv regardless of what the image declares.
     entrypoint:
@@ -86,7 +86,7 @@ services:
   # survive a restart — see the persistence overlay in the README if that matters
   # more to you than versioning does.
   gcs:
-    image: fsouza/fake-gcs-server:1.55.1
+    image: fsouza/fake-gcs-server:1.56.1
     depends_on:
       # Only needed for the object notifications below; harmless without them.
       pubsub: { condition: service_started }
@@ -114,7 +114,7 @@ services:
       #     topics:
       #       - name: storage-notifications
       #
-      # Verified against 1.55.1: if the topic does not exist the upload still
+      # Verified against 1.56.1: if the topic does not exist the upload still
       # answers 200 and the event is dropped, leaving only `error publishing
       # event: ... NotFound` in this container's log. So a missing topic does not
       # fail anything loudly — it just means no notifications ever arrive.
