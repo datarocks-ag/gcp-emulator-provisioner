@@ -208,9 +208,10 @@ disappear: an unchanged resource is logged at debug level only.
     30 seconds and then every 30 to 60 seconds, with the cause in `error` (here
     `dial tcp 127.0.0.1:21097: connect: connection refused`). Read the first one instead of
     waiting.
-  - Pub/Sub logs **nothing** after `Connecting to Pub/Sub` for the full five minutes, then
-    `"msg":"Provisioning failed","error":"connecting to Pub/Sub: connection timeout after 5m0s: context deadline exceeded"`.
-    A silent pod after that line means `PUBSUB_EMULATOR_HOST` points at nothing reachable.
+  - Pub/Sub bounds each attempt to 10 seconds, so the first
+    `"msg":"Pub/Sub not ready, retrying"` warning appears about 10 seconds after
+    `Connecting to Pub/Sub`, with `"error":"context deadline exceeded"`. After five minutes the
+    run fails with `"error":"connecting to Pub/Sub: connection timeout after 5m0s: context deadline exceeded"`.
 - **A ConfigMap change does not re-run a finished Job.** Delete the Job and apply it again, or
   give each version a new Job name.
 - **Pod security policies that require a non-root user.** The image declares no `USER`, so it

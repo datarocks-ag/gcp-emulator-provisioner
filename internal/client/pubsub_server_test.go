@@ -33,6 +33,11 @@ type fakePubSub struct {
 	unsupportedPaths map[string]bool
 	// listErr fails the readiness probe until cleared.
 	listErr error
+	// listStalls makes the readiness probe hang until its caller gives up, the
+	// way an unreachable endpoint does.
+	listStalls bool
+	// listCalls counts readiness probes that reached the server.
+	listCalls int
 	// appliedMasks records every mask that reached the server.
 	appliedMasks [][]string
 }
@@ -61,7 +66,16 @@ func startFakePubSub(t *testing.T) (*fakePubSub, string) {
 	return f, lis.Addr().String()
 }
 
-func (f *fakePubSub) ListTopics(context.Context, *pubsubpb.ListTopicsRequest) (*pubsubpb.ListTopicsResponse, error) {
+func (f *fakePubSub) ListTopics(ctx context.Context, _ *pubsubpb.ListTopicsRequest) (*pubsubpb.ListTopicsResponse, error) {
+	f.mu.Lock()
+	f.listCalls++
+	stalls := f.listStalls
+	f.mu.Unlock()
+	if stalls {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.listErr != nil {

@@ -96,6 +96,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`--help` lists every section.** The `--section` help text omitted
   `credentials`; it is now built from the same list the value is validated
   against.
+- **An unreachable Pub/Sub endpoint now logs retry warnings.** The readiness
+  probe had no deadline of its own, and the client library retried inside it, so
+  the provisioner logged nothing for five minutes. Each attempt is now bounded to
+  10 seconds, as Cloud Storage's already were.
+- **Connection errors report the real wait.** Giving up always claimed
+  `connection timeout after 5m0s`, even for a run cancelled after seconds. The
+  message now carries the measured elapsed time, and says `cancelled` when the
+  run was cancelled.
 
 ## [2.0.1] - 2026-08-18
 

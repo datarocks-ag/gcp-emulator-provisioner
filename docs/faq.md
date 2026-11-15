@@ -691,8 +691,17 @@ $ STORAGE_EMULATOR_HOST=localhost:4443 GCP_CONFIG_PATH=gcp-config.yaml gcp-emula
 {"level":"WARN","msg":"Cloud Storage not ready, retrying","attempt":1,"max_retries":15,"delay":1000000000,"error":"retry failed with context deadline exceeded; last error: Get \"http://localhost:4443/storage/v1/b?…\": dial tcp localhost:4443: connect: connection refused"}
 ```
 
-For Pub/Sub, nothing more is logged after `Connecting to Pub/Sub` until it connects or the five
-minutes run out (observed in testing: the client library retries inside a single attempt). Key files are written before
+For Pub/Sub, each attempt is bounded to 10 seconds, so the first warning appears about 10 seconds
+after `Connecting to Pub/Sub`. Captured against a port where nothing listens, stopped with Ctrl-C
+after 16 seconds (`time` trimmed):
+
+```json
+{"level":"WARN","msg":"Pub/Sub not ready, retrying","attempt":1,"max_retries":15,"delay":1000000000,"error":"context deadline exceeded"}
+{"level":"ERROR","msg":"Provisioning failed","error":"connecting to Pub/Sub: connection cancelled after 16s: context canceled"}
+```
+
+A run that is cancelled says `connection cancelled after <elapsed>`; one that reaches the five
+minute limit says `connection timeout after 5m0s`. Key files are written before
 any connection is attempted, so they are not held up. In Compose, start the provisioner with
 `depends_on: … condition: service_healthy` so it rarely has to wait; if an application needs its
 key before the emulators are healthy, write it in a separate container with

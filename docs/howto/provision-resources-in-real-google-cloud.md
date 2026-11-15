@@ -147,9 +147,8 @@ $ gcloud storage buckets list --project=<your-project-id>
   up to five minutes — logging `Pub/Sub not ready, retrying` or
   `Cloud Storage not ready, retrying` with the API's error in the `error` field. Read the
   first warning rather than waiting for the timeout. (Expected from the code, not captured.
-  Where the Pub/Sub client library itself keeps retrying an error, no warning appears at all:
-  an unreachable Pub/Sub endpoint was captured logging nothing for five minutes before
-  `connection timeout after 5m0s`.)
+  Each Pub/Sub attempt is bounded to 10 seconds, so even an error the client library keeps
+  retrying internally surfaces as a warning with `"error":"context deadline exceeded"`.)
 - **A leftover emulator variable** sends that service to the emulator address instead of
   Google Cloud: the connection line shows the address in `emulator_host`, and where no
   emulator answers the run fails after the five-minute retry budget. Check both connection

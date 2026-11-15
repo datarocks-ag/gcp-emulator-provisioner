@@ -216,6 +216,33 @@ func TestSubscriptionExpirationNeverVersusTTL(t *testing.T) {
 	}
 }
 
+// An unreachable endpoint never answers, so a probe without its own deadline
+// spent the whole five-minute budget in one attempt and logged nothing. Each
+// attempt is bounded, so retryUntilReady gets to warn and back off.
+func TestConnectPubSubBoundsEachProbe(t *testing.T) {
+	f, host := startFakePubSub(t)
+	f.mu.Lock()
+	f.listStalls = true
+	f.mu.Unlock()
+
+	restore := pubsubProbeTimeout
+	pubsubProbeTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { pubsubProbeTimeout = restore })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2500*time.Millisecond)
+	defer cancel()
+
+	if _, err := ConnectPubSub(ctx, "local-dev", host); err == nil {
+		t.Fatal("expected a stalled endpoint to fail the connection")
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.listCalls < 2 {
+		t.Errorf("probed %d times before giving up, want each attempt bounded and retried", f.listCalls)
+	}
+}
+
 func TestConnectPubSubRetriesUntilReady(t *testing.T) {
 	f, host := startFakePubSub(t)
 

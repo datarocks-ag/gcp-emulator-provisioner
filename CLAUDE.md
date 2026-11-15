@@ -329,6 +329,12 @@ totalTimeout = 5 * time.Minute
 Exponential backoff in `retryUntilReady`, shared by both clients. Note the failure mode: an
 authorization error looks identical to an outage for five minutes.
 
+Each probe carries its own deadline — 30s for Cloud Storage (`operationTimeout`), 10s for Pub/Sub
+(`pubsubProbeTimeout`). Both client libraries retry internally until their context expires, so a
+probe without one spends the whole budget in a single attempt and never logs a retry warning.
+The give-up error reports the measured elapsed time and says `cancelled` rather than `timeout`
+when the caller's context was cancelled.
+
 ### Exit Codes
 
 - `0` — provisioning completed (k8s Job compatible)

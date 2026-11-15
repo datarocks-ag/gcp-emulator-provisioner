@@ -112,6 +112,14 @@ type PubSubClient struct {
 // ErrNotFound reports that a topic or subscription does not exist.
 var ErrNotFound = errors.New("resource not found")
 
+// pubsubProbeTimeout bounds one readiness probe.
+//
+// The Pub/Sub client retries a call internally until its context expires, so
+// against an endpoint that never answers a probe without its own deadline would
+// spend the whole connection budget in one attempt — no "not ready, retrying"
+// warning for five minutes. A variable so tests can shorten it.
+var pubsubProbeTimeout = 10 * time.Second
+
 // ConnectPubSub dials the Pub/Sub admin APIs and blocks until they answer.
 //
 // An empty emulatorHost means Google Cloud, reached with Application Default
@@ -143,6 +151,9 @@ func ConnectPubSub(ctx context.Context, projectID, emulatorHost string) (*PubSub
 
 	// ListTopics is the cheapest call that proves the service is answering.
 	probe := func(ctx context.Context) error {
+		ctx, cancel := context.WithTimeout(ctx, pubsubProbeTimeout)
+		defer cancel()
+
 		it := c.topics.ListTopics(ctx, &pubsubpb.ListTopicsRequest{
 			Project:  c.projectPath(),
 			PageSize: 1,

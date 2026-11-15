@@ -4,6 +4,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -23,6 +24,7 @@ const (
 func retryUntilReady(ctx context.Context, service string, probe func(context.Context) error) error {
 	ctx, cancel := context.WithTimeout(ctx, totalTimeout)
 	defer cancel()
+	start := time.Now()
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		err := probe(ctx)
@@ -31,7 +33,7 @@ func retryUntilReady(ctx context.Context, service string, probe func(context.Con
 		}
 
 		if ctx.Err() != nil {
-			return fmt.Errorf("connection timeout after %s: %w", totalTimeout, ctx.Err())
+			return gaveUp(ctx, start)
 		}
 
 		delay := time.Duration(float64(initialDelay) * math.Pow(2, float64(attempt)))
@@ -49,9 +51,26 @@ func retryUntilReady(ctx context.Context, service string, probe func(context.Con
 		select {
 		case <-time.After(delay):
 		case <-ctx.Done():
-			return fmt.Errorf("connection timeout: %w", ctx.Err())
+			return gaveUp(ctx, start)
 		}
 	}
 
 	return fmt.Errorf("failed to connect to %s after %d attempts", service, maxRetries+1)
+}
+
+// gaveUp describes why retryUntilReady stopped once its context ended. The
+// elapsed time is measured rather than assumed: a caller's own deadline or a
+// cancellation can end the wait long before totalTimeout.
+func gaveUp(ctx context.Context, start time.Time) error {
+	elapsed := time.Since(start)
+	if elapsed >= time.Second {
+		elapsed = elapsed.Round(time.Second)
+	} else {
+		elapsed = elapsed.Round(time.Millisecond)
+	}
+
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return fmt.Errorf("connection cancelled after %s: %w", elapsed, ctx.Err())
+	}
+	return fmt.Errorf("connection timeout after %s: %w", elapsed, ctx.Err())
 }
