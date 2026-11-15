@@ -359,8 +359,11 @@ func TestDryRunAppliesNothing(t *testing.T) {
 	}
 
 	p := New(ps, st, cfg, Options{DryRun: true})
-	if err := p.Run(context.Background()); err != nil {
-		t.Fatalf("Run: %v", err)
+	if err := p.ProvisionPubSub(context.Background()); err != nil {
+		t.Fatalf("ProvisionPubSub: %v", err)
+	}
+	if err := p.ProvisionStorage(context.Background()); err != nil {
+		t.Fatalf("ProvisionStorage: %v", err)
 	}
 
 	if len(ps.createdTopics)+len(ps.updatedTopics)+len(ps.createdSubs)+len(ps.updatedSubs) != 0 {
@@ -764,6 +767,82 @@ func TestPushWrapperUnsetIsNotDrift(t *testing.T) {
 	}
 }
 
+// Pub/Sub fills an omitted max_delivery_attempts or backoff with its own
+// default and reports that back. Comparing against the zero the config implies
+// would update the subscription on every run without ever converging.
+func TestOmittedDeadLetterAndRetryValuesAreNotDrift(t *testing.T) {
+	ps := newMockPubSub()
+	ps.topics["orders"] = &client.Topic{Name: "orders"}
+	ps.subs["processor"] = &client.Subscription{
+		Name: "processor", Topic: "orders", AckDeadline: 10 * time.Second,
+		DeadLetter: &client.DeadLetterPolicy{Topic: "orders-dlq", MaxDeliveryAttempts: 5},
+		Retry:      &client.RetryPolicy{MinimumBackoff: 10 * time.Second, MaximumBackoff: 600 * time.Second},
+	}
+
+	cfg := &config.Config{PubSub: config.PubSub{Topics: []config.Topic{
+		{
+			Name: "orders",
+			Subscriptions: []config.Subscription{{
+				Name: "processor", AckDeadline: "10s",
+				DeadLetter: &config.DeadLetter{Topic: "orders-dlq"},
+				Retry:      &config.Retry{MinimumBackoff: "10s"},
+			}},
+		},
+		{Name: "orders-dlq"},
+	}}}
+
+	p := New(ps, nil, cfg, DefaultOptions())
+	if err := p.ProvisionPubSub(context.Background()); err != nil {
+		t.Fatalf("ProvisionPubSub: %v", err)
+	}
+
+	if len(ps.updatedSubs) != 0 {
+		t.Errorf("omitted dead letter / retry values were treated as drift: %v", ps.updatedSubs[0].paths)
+	}
+}
+
+// When another dead letter or retry value does drift, the mask replaces the
+// whole policy, so an omitted value has to be carried across from the live one
+// rather than sent as zero and reset to the Pub/Sub default.
+func TestOmittedDeadLetterAndRetryValuesSurviveAnUpdate(t *testing.T) {
+	ps := newMockPubSub()
+	ps.topics["orders"] = &client.Topic{Name: "orders"}
+	ps.subs["processor"] = &client.Subscription{
+		Name: "processor", Topic: "orders", AckDeadline: 10 * time.Second,
+		DeadLetter: &client.DeadLetterPolicy{Topic: "old-dlq", MaxDeliveryAttempts: 12},
+		Retry:      &client.RetryPolicy{MinimumBackoff: 10 * time.Second, MaximumBackoff: 300 * time.Second},
+	}
+
+	cfg := &config.Config{PubSub: config.PubSub{Topics: []config.Topic{
+		{
+			Name: "orders",
+			Subscriptions: []config.Subscription{{
+				Name: "processor", AckDeadline: "10s",
+				DeadLetter: &config.DeadLetter{Topic: "orders-dlq"},
+				Retry:      &config.Retry{MinimumBackoff: "20s"},
+			}},
+		},
+		{Name: "orders-dlq"},
+		{Name: "old-dlq"},
+	}}}
+
+	p := New(ps, nil, cfg, DefaultOptions())
+	if err := p.ProvisionPubSub(context.Background()); err != nil {
+		t.Fatalf("ProvisionPubSub: %v", err)
+	}
+
+	if len(ps.updatedSubs) != 1 {
+		t.Fatalf("got %d updates, want 1", len(ps.updatedSubs))
+	}
+	sent := ps.updatedSubs[0].sub
+	if got := sent.DeadLetter; got.Topic != "orders-dlq" || got.MaxDeliveryAttempts != 12 {
+		t.Errorf("dead letter policy sent = %+v, want topic orders-dlq with live max_delivery_attempts 12", *got)
+	}
+	if got := sent.Retry; got.MinimumBackoff != 20*time.Second || got.MaximumBackoff != 300*time.Second {
+		t.Errorf("retry policy sent = %+v, want minimum 20s with live maximum 300s", *got)
+	}
+}
+
 func TestPushAttributesPreservedOnEndpointChange(t *testing.T) {
 	ps := newMockPubSub()
 	ps.topics["orders"] = &client.Topic{Name: "orders"}
@@ -1027,7 +1106,7 @@ func TestAnnotateVersioningErrorLeavesOtherErrorsAlone(t *testing.T) {
 	}
 }
 
-func TestRunPropagatesSectionErrors(t *testing.T) {
+func TestProvisionPubSubPropagatesErrors(t *testing.T) {
 	ps := newMockPubSub()
 	ps.topics["orders"] = &client.Topic{Name: "orders"}
 	ps.updateTopicErr = errors.New("permission denied")
@@ -1037,8 +1116,8 @@ func TestRunPropagatesSectionErrors(t *testing.T) {
 	}}}
 
 	p := New(ps, newMockStorage(), cfg, DefaultOptions())
-	if err := p.Run(context.Background()); err == nil {
-		t.Fatal("Run must propagate a failure from the Pub/Sub section")
+	if err := p.ProvisionPubSub(context.Background()); err == nil {
+		t.Fatal("ProvisionPubSub must propagate an update failure")
 	}
 }
 
@@ -1046,14 +1125,14 @@ func TestSectionsSkipWhenNotConfigured(t *testing.T) {
 	// A config with no buckets must not touch the (nil) storage client.
 	cfg := &config.Config{PubSub: config.PubSub{Topics: []config.Topic{{Name: "orders"}}}}
 	p := New(newMockPubSub(), nil, cfg, DefaultOptions())
-	if err := p.Run(context.Background()); err != nil {
-		t.Fatalf("Run: %v", err)
+	if err := p.ProvisionStorage(context.Background()); err != nil {
+		t.Fatalf("ProvisionStorage: %v", err)
 	}
 
 	// And the reverse.
 	cfg = &config.Config{Storage: config.Storage{Buckets: []config.Bucket{{Name: "docs"}}}}
 	p = New(nil, newMockStorage(), cfg, DefaultOptions())
-	if err := p.Run(context.Background()); err != nil {
-		t.Fatalf("Run: %v", err)
+	if err := p.ProvisionPubSub(context.Background()); err != nil {
+		t.Fatalf("ProvisionPubSub: %v", err)
 	}
 }

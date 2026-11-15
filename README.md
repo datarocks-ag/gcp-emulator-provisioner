@@ -333,11 +333,12 @@ gcp-emulator-provisioner --section=credentials  # key files only, no endpoint ne
 gcp-emulator-provisioner                        # all three (default)
 ```
 
-Within a full run, the key files are written only once every section with
-resources has connected: the provisioner connects to Pub/Sub and Cloud Storage
-first, retrying for up to five minutes each, and writes credentials after that.
-If an application needs its key file before the emulators are up, write it from
-a separate container that runs `--section=credentials`.
+Within a full run, credentials are written first, before the provisioner
+connects to Pub/Sub or Cloud Storage: an application that needs its key file gets
+it while the emulators are still coming up, or even if they never do. In Compose,
+where the provisioner usually waits for the emulators to report healthy before it
+starts at all, a separate container running `--section=credentials` writes the
+key earlier still.
 
 A section whose config is empty is skipped, and its client is never constructed —
 running against a stack with only fake-gcs-server needs no Pub/Sub endpoint.
@@ -419,10 +420,9 @@ stops a config from passing against the emulator and failing in production.
 `ack_deadline_seconds`: `10s500ms` would be truncated on the wire, read back as
 `10s`, and then reported as drift on every subsequent run.
 
-Set `max_delivery_attempts` whenever you set `dead_letter`, and both backoffs
-whenever you set `retry`. A value left out is sent as zero, Pub/Sub fills in its
-own default, and the next run sees the difference and updates the subscription
-again — on every run.
+`max_delivery_attempts` and the two backoffs may be left out: Pub/Sub then uses
+its own defaults. An omitted value is not compared, and when another dead letter
+or retry setting changes, the live value is carried across rather than reset.
 
 ### Push subscriptions
 

@@ -46,12 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   marked otherwise.
 
   The README and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) are corrected where
-  they disagreed with the code: credentials in a full run are written only after
-  both emulators answer; `strategy: update` on a credential regenerates the key on
+  they disagreed with the code: `strategy: update` on a credential regenerates the key on
   every run while set; the token stub answers 405 to other methods on `/token`; the
   README's `token_uri` example used a port the stub does not listen on; a
   `push_wrapper` or OIDC token set out of band is dropped by the next push update;
-  `dead_letter` and `retry` need every value set to converge; `archive` is not a
+  `archive` is not a
   fake-gcs-server notification event; unknown config keys are ignored rather than
   rejected; exit code 2 for an unknown flag.
 
@@ -80,6 +79,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   OpenTelemetry 1.47.0, `go-jose/v4` 4.1.6; GitHub Actions
   `docker/metadata-action` v6, `docker/build-push-action` v7,
   `docker/login-action` v4, `goreleaser/goreleaser-action` v7.
+
+### Fixed
+
+- **Credentials are written before any endpoint is contacted in a full run.**
+  The provisioner connected to Pub/Sub and Cloud Storage — each with up to five
+  minutes of retries — before writing key files, so an application waiting for
+  its key was held up by slow emulators, and got no key at all if one never came
+  up. Key files are now written first, as the documentation always said.
+  `Provisioner.Run` is gone; `main.go` sequences the sections.
+- **`dead_letter` and `retry` converge when a value is left out.** An omitted
+  `max_delivery_attempts` or backoff was compared as zero against the default
+  Pub/Sub fills in, so the subscription was updated on every run. Those values are
+  now compared only when set, and carried across from the live policy when another
+  dead letter or retry setting changes, the same way labels are.
+- **`--help` lists every section.** The `--section` help text omitted
+  `credentials`; it is now built from the same list the value is validated
+  against.
+- **An unreachable Pub/Sub endpoint now logs retry warnings.** The readiness
+  probe had no deadline of its own, and the client library retried inside it, so
+  the provisioner logged nothing for five minutes. Each attempt is now bounded to
+  10 seconds, as Cloud Storage's already were.
+- **Connection errors report the real wait.** Giving up always claimed
+  `connection timeout after 5m0s`, even for a run cancelled after seconds. The
+  message now carries the measured elapsed time, and says `cancelled` when the
+  run was cancelled.
 
 ## [2.0.1] - 2026-08-18
 

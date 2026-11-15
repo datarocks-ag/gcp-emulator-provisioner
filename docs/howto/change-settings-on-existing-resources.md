@@ -282,11 +282,6 @@ Against either endpoint, the most direct check is the one in step 3: a debug run
 
 ## Pitfalls
 
-- **An update that repeats on every run.** `dead_letter` without `max_delivery_attempts`, or
-  `retry` with only one backoff, logs `Updating subscription` with `dead_letter_policy` or
-  `retry_policy` every time, because the emulator stores its own defaults (5 attempts, 600s
-  maximum backoff) and they never match. Set `max_delivery_attempts` and both `minimum_backoff`
-  and `maximum_backoff`.
 - **Removing a field does not reset it.** Deleting `retain_acked_messages: true` from the config
   leaves it on. To turn a boolean off, write `false` explicitly; for other fields, set the value
   you want. Removing a label from the config never removes it from the resource either.

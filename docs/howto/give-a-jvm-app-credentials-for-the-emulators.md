@@ -28,11 +28,11 @@ neither emulator checks credentials at all.
 - **`token_uri` rewrites all four OAuth URLs.** Setting it on a credential entry points
   `auth_uri`, `token_uri`, `auth_provider_x509_cert_url` and `client_x509_cert_url` at the same
   address (`internal/credentials/credentials.go`).
-- **A full run writes keys late.** Without `--section`, the provisioner connects to Pub/Sub and
-  Cloud Storage first — each with up to five minutes of retries — and writes key files only
-  after both answer (`cmd/gcp-emulator-provisioner/main.go`). `--section=credentials` writes
-  them without contacting any endpoint. This guide therefore writes the key in its own
-  container.
+- **The provisioner service starts late.** A full run writes key files before it connects to
+  anything (`cmd/gcp-emulator-provisioner/main.go`), but in Compose the provisioner service
+  waits for both emulators to report healthy before it starts at all — the Pub/Sub emulator
+  can take a minute or more on a cold start. `--section=credentials` needs no emulator, so
+  this guide writes the key in its own container that starts at once.
 
 This is the order the services start in, and what each one waits for:
 
@@ -229,8 +229,8 @@ application's startup log is where it shows.
 ## Pitfalls
 
 - **Key missing at application start.** If the application depends only on the main
-  provisioner and an emulator never becomes healthy, no key is ever written: a full run
-  writes credentials only after both emulators answer. Keep the credentials-only container.
+  provisioner and an emulator never becomes healthy, Compose never starts the provisioner, so
+  no key is written. Keep the credentials-only container.
 - **The key changes on every run.** `strategy: update` on the credential entry regenerates
   the key on *every* run while it is set. Set it for one run, then remove it. Deleting the
   file (or the `gcp-secrets` volume) also produces a new key on the next run; restart

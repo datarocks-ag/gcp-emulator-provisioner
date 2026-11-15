@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gcp-emulator-provisioner/internal/config"
 	"gcp-emulator-provisioner/internal/provisioner"
@@ -61,6 +62,40 @@ func TestRunRequiresAProjectID(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "project id is required") {
 		t.Errorf("error = %v, want it to name the missing project id", err)
+	}
+}
+
+// TestRunWritesCredentialsBeforeConnecting pins the reason credentials come
+// first in a full run: an application that needs its key file must get it even
+// while the emulators are still coming up, or never come up at all.
+func TestRunWritesCredentialsBeforeConnecting(t *testing.T) {
+	keyPath := filepath.Join(t.TempDir(), "fake-sa.json")
+	writeConfig(t, "project_id: local-dev\n"+
+		"credentials:\n  - path: "+keyPath+"\n"+
+		"pubsub:\n  topics:\n    - name: orders\n")
+	t.Setenv("GCP_PROJECT_ID", "")
+	// Port 1 refuses connections, so the Pub/Sub connection never succeeds.
+	t.Setenv("PUBSUB_EMULATOR_HOST", "127.0.0.1:1")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := run(ctx, sectionAll, provisioner.DefaultOptions()); err == nil {
+		t.Fatal("expected an unreachable Pub/Sub endpoint to fail the run")
+	}
+	if _, err := os.Stat(keyPath); err != nil {
+		t.Errorf("key file was not written before connecting: %v", err)
+	}
+}
+
+// The --section help once listed three of the four sections; deriving it from
+// the allowlist keeps --help and validation in agreement.
+func TestSectionUsageNamesEverySection(t *testing.T) {
+	usage := sectionUsage()
+	for section := range validSections {
+		if !strings.Contains(usage, `"`+section+`"`) {
+			t.Errorf("--section help %q does not mention %q", usage, section)
+		}
 	}
 }
 

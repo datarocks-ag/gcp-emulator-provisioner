@@ -105,8 +105,8 @@ pubsub:
     - name: orders-dlq
 ```
 
-Set `max_delivery_attempts` explicitly: if you leave it out, the emulator fills in its own default
-and the provisioner reports `dead_letter_policy` as changed on every run.
+`max_delivery_attempts` is optional; left out, Pub/Sub uses its default of 5, and the provisioner
+does not report that as a change.
 
 Further reading: [Route failed messages to a dead letter topic](howto/route-failed-messages-to-a-dead-letter-topic.md),
 [Ordering](../README.md#ordering)
@@ -691,11 +691,21 @@ $ STORAGE_EMULATOR_HOST=localhost:4443 GCP_CONFIG_PATH=gcp-config.yaml gcp-emula
 {"level":"WARN","msg":"Cloud Storage not ready, retrying","attempt":1,"max_retries":15,"delay":1000000000,"error":"retry failed with context deadline exceeded; last error: Get \"http://localhost:4443/storage/v1/b?…\": dial tcp localhost:4443: connect: connection refused"}
 ```
 
-For Pub/Sub, nothing more is logged after `Connecting to Pub/Sub` until it connects or the five
-minutes run out (observed in testing: the client library retries inside a single attempt). Key files are not written
-until both emulators have answered either. If an application needs its key before the emulators
-are up, write it in a separate container with `--section=credentials`. In Compose, start the
-provisioner with `depends_on: … condition: service_healthy` so it rarely has to wait.
+For Pub/Sub, each attempt is bounded to 10 seconds, so the first warning appears about 10 seconds
+after `Connecting to Pub/Sub`. Captured against a port where nothing listens, stopped with Ctrl-C
+after 16 seconds (`time` trimmed):
+
+```json
+{"level":"WARN","msg":"Pub/Sub not ready, retrying","attempt":1,"max_retries":15,"delay":1000000000,"error":"context deadline exceeded"}
+{"level":"ERROR","msg":"Provisioning failed","error":"connecting to Pub/Sub: connection cancelled after 16s: context canceled"}
+```
+
+A run that is cancelled says `connection cancelled after <elapsed>`; one that reaches the five
+minute limit says `connection timeout after 5m0s`. Key files are written before
+any connection is attempted, so they are not held up. In Compose, start the provisioner with
+`depends_on: … condition: service_healthy` so it rarely has to wait; if an application needs its
+key before the emulators are healthy, write it in a separate container with
+`--section=credentials`.
 
 Further reading: [Run one section per container](howto/run-one-section-per-container.md),
 [Add the GCP emulators to your Compose project](howto/add-emulators-to-your-compose-project.md)

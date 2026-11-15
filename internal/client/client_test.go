@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -311,6 +312,31 @@ func TestRetryUntilReadyStopsOnCancelledContext(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected an error once the context is cancelled")
+	}
+	// A cancelled run is not a timeout, and nothing waited five minutes.
+	if strings.Contains(err.Error(), "timeout") || !strings.Contains(err.Error(), "cancelled") {
+		t.Errorf("error = %q, want it to say the connection was cancelled", err)
+	}
+}
+
+func TestRetryUntilReadyReportsTheRealElapsedTime(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	// A probe that hangs until its context ends, like a call to an endpoint
+	// that never answers.
+	err := retryUntilReady(ctx, "test", func(ctx context.Context) error {
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	if err == nil {
+		t.Fatal("expected an error once the deadline passes")
+	}
+	if strings.Contains(err.Error(), totalTimeout.String()) {
+		t.Errorf("error = %q, but the run gave up well before %s", err, totalTimeout)
+	}
+	if !strings.Contains(err.Error(), "timeout") {
+		t.Errorf("error = %q, want it to say the connection timed out", err)
 	}
 }
 

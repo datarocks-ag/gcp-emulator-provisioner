@@ -211,8 +211,9 @@ $ curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8085/v1/projects/loc
 
 - **The endpoints must be up.** Because a dry run reads live state, it connects to Pub/Sub and
   Cloud Storage like a real run, and waits for them with the same retries — up to five minutes —
-  before failing with `connecting to Pub/Sub: connection timeout after 5m0s: …`. The log sits at
-  `Connecting to Pub/Sub` while it waits. To check only the config, without endpoints, use
+  before failing with `connecting to Pub/Sub: connection timeout after 5m0s: …`. While it waits it
+  logs `Pub/Sub not ready, retrying` warnings, the first after about 10 seconds. To check only the
+  config, without endpoints, use
   `--section=credentials --dry-run` as described in
   [Validate a config without emulators](validate-a-config-without-emulators.md).
 - **A new resource shows no diff.** `Would create …` cannot say what would differ, because there
@@ -223,14 +224,8 @@ $ curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8085/v1/projects/loc
   Google Cloud accepts (labels, and a subscription's `expiration_policy`). A dry run lists them
   under `fields` as if they would apply; only the real run discovers the refusal and logs a
   warning. See [Emulator Caveats](../../README.md#emulator-caveats).
-- **A dry run that keeps showing the same update.** If `dead_letter` is set without
-  `max_delivery_attempts`, or `retry` without both `minimum_backoff` and `maximum_backoff`, the
-  emulator fills in its own defaults and every run — real or dry — reports `dead_letter_policy`
-  or `retry_policy` again. Set all of those values explicitly.
 - **`strategy: create` hides changes.** A resource under `create` that already exists is logged
   as `Skipping existing … (strategy=create)` with no diff, in a dry run as in a real one.
-- **`--help` is incomplete.** The help text for `--section` lists `pubsub`, `storage` and `all`
-  only; `credentials` is accepted as well.
 
 ## Further reading
 

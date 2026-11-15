@@ -188,8 +188,6 @@ value and the command exits with `0` again.
 - **A bad `GCP_PROJECT_ID` passes.** Only `project_id` in the file is format-checked; an invalid
   value in the environment variable is accepted here and rejected later by Pub/Sub or Cloud
   Storage.
-- **`--help` is incomplete.** The help text for `--section` lists `pubsub`, `storage` and `all`
-  only; `credentials` is accepted as well.
 
 ## Further reading
 
