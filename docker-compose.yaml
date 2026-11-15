@@ -7,7 +7,7 @@ services:
   # emulation. The healthcheck budget below stays generous anyway: the image is
   # roughly a gigabyte, so the first `up` on a cold cache is dominated by the pull.
   pubsub:
-    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:581.0.0-emulators
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:593.0.0-emulators
     command: >
       gcloud beta emulators pubsub start
       --host-port=0.0.0.0:8085
@@ -27,7 +27,7 @@ services:
   # not implement object versioning, and a bucket configured with `versioning:
   # true` fails against it.
   gcs:
-    image: fsouza/fake-gcs-server:1.55.1
+    image: fsouza/fake-gcs-server:1.56.1
     command: ["-scheme", "http", "-host", "0.0.0.0", "-port", "4443", "-backend", "memory", "-public-host", "gcs:4443"]
     ports:
       - "4443:4443"

@@ -59,7 +59,7 @@ go test -race -run TestEnsureTopic ./internal/provisioner/        # single test
   `US-CENTRAL1`/`STANDARD`, and a mask validated in full before anything is applied. Extend the
   fakes rather than dropping back to integration-only coverage
 - The Pub/Sub emulator image is **roughly a gigabyte**, so a cold pull dominates the first
-  integration run. Tests and compose pin `google-cloud-cli:581.0.0-emulators` — the renamed
+  integration run. Tests and compose pin `google-cloud-cli:593.0.0-emulators` — the renamed
   `cloud-sdk` repository, and the one publishing arm64, so it no longer runs under emulation on
   an Apple Silicon host. The pins live in `pubSubEmulatorImage` / `fakeGCSImage` in
   `integration_test.go`, `docker-compose.yaml` and `docker-compose.emulators.yaml`; move all three
@@ -381,6 +381,6 @@ authorization error looks identical to an outage for five minutes.
   | GCS `labels`, `lifecycle`, `cors` | Accepted and discarded by fake-gcs-server — drift never converges |
   | `subscription.detached` | Driven by the `DetachSubscription` RPC, not a declarative setting |
 - The Compose healthchecks are verified against the pinned images:
-  `google-cloud-cli:581.0.0-emulators` ships `curl` and the emulator answers a plain HTTP `GET /`
-  with 200 despite speaking gRPC; `fake-gcs-server:1.55.1` ships `wget` but **not** `curl`.
+  `google-cloud-cli:593.0.0-emulators` ships `curl` and the emulator answers a plain HTTP `GET /`
+  with 200 despite speaking gRPC; `fake-gcs-server:1.56.1` ships `wget` but **not** `curl`.
 - `pubsub` in Compose needs a long `start_period` because the image is roughly a gigabyte.

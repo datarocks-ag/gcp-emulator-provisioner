@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **[docker-compose.emulators.yaml](docker-compose.emulators.yaml)**, the two
   upstream emulator containers on their own, for a project that wants the
   emulator stack without re-deriving it. Pinned images
-  (`google-cloud-cli:581.0.0-emulators`, `fake-gcs-server:1.55.1`), the
+  (`google-cloud-cli:593.0.0-emulators`, `fake-gcs-server:1.56.1`), the
   arguments, the healthchecks, and loopback-bound ports; everything a consumer
   normally changes is an environment variable with a default, so a vendored copy
   diffs cleanly against the next update instead of replaying local edits.
@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   It also wires fake-gcs-server's object notifications to the Pub/Sub emulator,
   which reproduces GCS bucket notifications offline. Verified end to end against
-  1.55.1: an upload publishes `OBJECT_FINALIZE` to the configured topic, and a
+  1.56.1: an upload publishes `OBJECT_FINALIZE` to the configured topic, and a
   subscriber receives it. If the topic is not declared the upload still answers
   200 and the event is dropped, leaving only `error publishing event: ...
   NotFound` in the container log — so a missing topic fails silently rather than
@@ -44,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   masks work, which fields are silently discarded — are only meaningful against a
   known version.
 
-  The Pub/Sub emulator moves to `google-cloud-cli:581.0.0-emulators`, the renamed
+  The Pub/Sub emulator moves to `google-cloud-cli:593.0.0-emulators`, the renamed
   `cloud-sdk` repository and the one publishing arm64, so an Apple Silicon host
   runs it natively rather than under emulation. The test-side pins live in
   `pubSubEmulatorImage` / `fakeGCSImage`; those and the two Compose files move
@@ -56,9 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CI toolchain could not build.
 - **golangci-lint 2.15.0** (from 2.12.2). The old version's staticcheck panics
   under Go 1.27 and silently skips its analyzers.
-- **Dependencies:** `cloud.google.com/go/pubsub/v2` 2.8.1,
-  `cloud.google.com/go/storage` 1.70.0, `google.golang.org/api` 0.307.0,
-  `google.golang.org/grpc` 1.84.0, `testcontainers-go` 0.45.0,
+- **Dependencies:** `cloud.google.com/go/pubsub/v2` 2.9.0,
+  `cloud.google.com/go/storage` 1.70.0, `google.golang.org/api` 0.315.0,
+  `google.golang.org/grpc` 1.85.0, `testcontainers-go` 0.45.0,
   OpenTelemetry 1.47.0, `go-jose/v4` 4.1.6; GitHub Actions
   `docker/metadata-action` v6, `docker/build-push-action` v7,
   `docker/login-action` v4, `goreleaser/goreleaser-action` v7.

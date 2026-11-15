@@ -26,8 +26,8 @@ const testProject = "local-dev"
 // arm64, so the emulator runs natively on an Apple Silicon host instead of under
 // emulation.
 const (
-	pubSubEmulatorImage = "gcr.io/google.com/cloudsdktool/google-cloud-cli:581.0.0-emulators"
-	fakeGCSImage        = "fsouza/fake-gcs-server:1.55.1"
+	pubSubEmulatorImage = "gcr.io/google.com/cloudsdktool/google-cloud-cli:593.0.0-emulators"
+	fakeGCSImage        = "fsouza/fake-gcs-server:1.56.1"
 )
 
 // startPubSubEmulator boots the gcloud Pub/Sub emulator and returns its host:port.
