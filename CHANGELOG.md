@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-15
+
+A reusable Compose fragment for the emulator stack, operator documentation, and
+a round of fixes found while writing it. Key files are now written before the
+provisioner waits for any emulator; omitted dead letter, retry and push settings
+no longer cause updates on every run or get dropped by one; and connection
+problems are reported while they happen rather than after five silent minutes.
+`GCP_PROJECT_ID` is now held to the same format as `project_id`, so an invalid
+value fails up front instead of at the first API call.
+
 ### Added
 
 - **[docker-compose.emulators.yaml](docker-compose.emulators.yaml)**, the two
@@ -327,7 +337,8 @@ Initial release.
   field drift, the push config oneofs, and the emulator label gap including that
   a refused path does not discard the rest of its batch.
 
-[Unreleased]: https://github.com/datarocks-ag/gcp-emulator-provisioner/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/datarocks-ag/gcp-emulator-provisioner/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/datarocks-ag/gcp-emulator-provisioner/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/datarocks-ag/gcp-emulator-provisioner/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/datarocks-ag/gcp-emulator-provisioner/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/datarocks-ag/gcp-emulator-provisioner/releases/tag/v1.0.0
