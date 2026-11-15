@@ -40,7 +40,7 @@ go test -race ./internal/config/                                  # single packa
 go test -race -run TestEnsureTopic ./internal/provisioner/        # single test
 ```
 
-- Go 1.25+, `CGO_ENABLED=0` (pure Go, no C dependencies)
+- Go 1.27+, `CGO_ENABLED=0` (pure Go, no C dependencies)
 - golangci-lint is a `tool` dependency in `go.mod` — always `go tool golangci-lint run`, never a
   globally installed binary
 - Integration tests use `testcontainers-go` and the `//go:build integration` tag — plain
@@ -332,7 +332,7 @@ authorization error looks identical to an outage for five minutes.
 
 - **No shared libraries** across provisioners — each project is standalone
 - `gopkg.in/yaml.v3` for config parsing
-- Dockerfile: multi-stage `golang:1.25-alpine` builder → `scratch` final image, CA certs copied in
+- Dockerfile: multi-stage `golang:1.27-alpine` builder → `scratch` final image, CA certs copied in
 - `-ldflags="-s -w -X main.version=${VERSION}"` for minimal binary + version injection
 - Errors always wrapped: `fmt.Errorf("<lowercase gerund phrase>: %w", err)`
 - Validation errors are path-prefixed — `pubsub.topics[0].subscriptions[1].dead_letter.topic: ...`

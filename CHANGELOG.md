@@ -50,6 +50,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pubSubEmulatorImage` / `fakeGCSImage`; those and the two Compose files move
   together. Dependabot does not track them, so bumping stays manual.
 
+- **Go 1.27.** `go.mod` now declares `go 1.27.0`, CI and release build with
+  1.27, and both Dockerfiles use `golang:1.27-alpine`. The updated Google Cloud
+  and OpenTelemetry modules require at least Go 1.26, which the previous 1.25
+  CI toolchain could not build.
+- **golangci-lint 2.15.0** (from 2.12.2). The old version's staticcheck panics
+  under Go 1.27 and silently skips its analyzers.
+- **Dependencies:** `cloud.google.com/go/pubsub/v2` 2.8.1,
+  `cloud.google.com/go/storage` 1.70.0, `google.golang.org/api` 0.307.0,
+  `google.golang.org/grpc` 1.84.0, `testcontainers-go` 0.45.0,
+  OpenTelemetry 1.47.0, `go-jose/v4` 4.1.6; GitHub Actions
+  `docker/metadata-action` v6, `docker/build-push-action` v7,
+  `docker/login-action` v4, `goreleaser/goreleaser-action` v7.
+
 ## [2.0.1] - 2026-08-18
 
 Documentation and dependencies. No change to the provisioner's or the stub's
