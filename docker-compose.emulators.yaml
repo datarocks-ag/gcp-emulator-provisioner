@@ -53,7 +53,7 @@ services:
   # emulation. Pinned rather than floating `:emulators` — the tag moves, and an
   # upstream change would otherwise break a stack with no local commit to blame.
   pubsub:
-    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:593.0.0-emulators
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:594.0.1-emulators
     # entrypoint, not command: Compose clears the image's CMD when entrypoint is
     # overridden, so this is the whole argv regardless of what the image declares.
     entrypoint:
