@@ -4,9 +4,9 @@ go 1.27.0
 
 require (
 	cloud.google.com/go/pubsub/v2 v2.9.0
-	cloud.google.com/go/storage v1.70.0
+	cloud.google.com/go/storage v1.71.0
 	github.com/testcontainers/testcontainers-go v0.45.0
-	google.golang.org/api v0.315.0
+	google.golang.org/api v0.316.0
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
